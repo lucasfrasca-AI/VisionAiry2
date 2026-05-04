@@ -1,0 +1,37 @@
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Project runtime data (anchor with leading / so src/reports/ etc. stay tracked)
+/data/state.db
+/data/raw/
+/data/.key_status.json
+/data/.config_audit.log
+/reports/
+/digest/
+*.log
+logs/
+
+# Vendor reference repos (read-only references, not part of our code)
+/vendor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
