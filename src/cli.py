@@ -25,7 +25,11 @@ from rich.console import Console
 from rich.prompt import Confirm
 from rich.table import Table
 
+from dotenv import load_dotenv
 from src.config import ROOT, CONFIG_YAML_PATH, ENV_PATH, get_config, reload_config
+
+# Inject .env into os.environ so source clients can read keys via os.environ.get()
+load_dotenv(ENV_PATH, override=False)
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="VisionAiry2 CLI.")
 console = Console()
@@ -329,9 +333,14 @@ DATA_VALIDATORS: dict[str, callable] = {
     "FINNHUB_API_KEY": lambda k: _validate_http(
         "finnhub", "https://finnhub.io/api/v1/quote",
         params={"symbol": "AAPL", "token": k}),
-    "FMP_API_KEY": lambda k: _validate_http(
-        "fmp", "https://financialmodelingprep.com/api/v3/profile/AAPL",
-        params={"apikey": k}),
+    # FMP: 200 with non-empty array = WORKING; 200 with {"Error Message": ...} = INVALID
+    "FMP_API_KEY": lambda k: (lambda r: (
+        ("WORKING", "200 ok") if r.status_code == 200 and isinstance(r.json(), list) and len(r.json()) > 0 else
+        ("INVALID", f"{r.status_code} {r.text[:80]}") if r.status_code in (401, 403) or
+            (r.status_code == 200 and "Error Message" in r.text) else
+        ("SET BUT UNVERIFIED", f"{r.status_code}")
+    ))(httpx.get("https://financialmodelingprep.com/api/v3/profile/AAPL",
+                 params={"apikey": k}, timeout=10.0)),
     "ALPHA_VANTAGE_API_KEY": lambda k: _validate_http(
         "alpha_vantage", "https://www.alphavantage.co/query",
         params={"function": "GLOBAL_QUOTE", "symbol": "AAPL", "apikey": k}),
@@ -377,10 +386,15 @@ DATA_VALIDATORS: dict[str, callable] = {
     ))(httpx.post("https://api.tavily.com/search",
                   json={"api_key": k, "query": "ping", "max_results": 1},
                   timeout=10.0)),
-    "FIRECRAWL_API_KEY": lambda k: _validate_http(
-        "firecrawl", "https://api.firecrawl.dev/v1/scrape",
-        headers={"Authorization": f"Bearer {k}"},
-        ok_status=(200, 400, 405)),  # endpoint requires POST; 405 = key accepted
+    # Firecrawl: requires POST /v1/scrape (not GET — GET returns 404); success=true in body
+    "FIRECRAWL_API_KEY": lambda k: (lambda r: (
+        ("WORKING", "200 ok") if r.status_code == 200 and r.json().get("success") is True else
+        ("INVALID", f"{r.status_code} {r.text[:80]}") if r.status_code in (401, 403) else
+        ("SET BUT UNVERIFIED", f"{r.status_code}")
+    ))(httpx.post("https://api.firecrawl.dev/v1/scrape",
+                  json={"url": "https://example.com", "formats": ["markdown"]},
+                  headers={"Authorization": f"Bearer {k}", "Content-Type": "application/json"},
+                  timeout=15.0)),
     "EXA_API_KEY": lambda k: _validate_http(
         "exa", "https://api.exa.ai/search",
         headers={"x-api-key": k},
@@ -628,6 +642,214 @@ def analyse_doc_cmd(url: str = typer.Argument(...)) -> None:
     """Mode 3 — analyse a document by URL. Implemented in Session 3."""
     _ = url
     console.print("[yellow]Mode 3 not yet implemented (Session 3).[/yellow]")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# sources subcommand group
+# ─────────────────────────────────────────────────────────────────────────────
+sources_app = typer.Typer(no_args_is_help=True, help="Source client management.")
+app.add_typer(sources_app, name="sources")
+
+
+@sources_app.command("list")
+def sources_list_cmd() -> None:
+    """List all source clients with their availability status."""
+    from src.sources.registry import list_available_sources, list_disabled_sources, SOURCE_REGISTRY, _register_all
+    cfg = get_config()
+    if not SOURCE_REGISTRY:
+        _register_all()
+    available = set(list_available_sources(cfg))
+    disabled = dict(list_disabled_sources(cfg))
+
+    table = Table(title=f"Source Clients ({len(SOURCE_REGISTRY)} total)")
+    table.add_column("SOURCE ID")
+    table.add_column("NEEDS KEY")
+    table.add_column("SECTOR ROUTED")
+    table.add_column("FALLBACK")
+    table.add_column("STATUS")
+
+    for sid in sorted(SOURCE_REGISTRY.keys()):
+        cls = SOURCE_REGISTRY[sid]
+        status = "[green]available[/green]" if sid in available else f"[red]disabled: {disabled.get(sid,'unknown')}[/red]"
+        needs_key = "[dim]no[/dim]" if not cls.needs_key else f"[cyan]{cls.key_env_var}[/cyan]"
+        sector = "[yellow]yes[/yellow]" if cls.sector_routed else "[dim]no[/dim]"
+        fallback = "[dim]yes[/dim]" if cls.is_fallback else "[dim]no[/dim]"
+        table.add_row(sid, needs_key, sector, fallback, status)
+    console.print(table)
+    console.print(f"[bold]{len(available)}[/bold] available, [bold]{len(disabled)}[/bold] disabled.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fetch command
+# ─────────────────────────────────────────────────────────────────────────────
+@app.command("fetch")
+def fetch_cmd(
+    source: Optional[str] = typer.Option(None, "--source", help="Source ID to fetch from."),
+    ticker: Optional[str] = typer.Option(None, "--ticker", help="Ticker symbol."),
+    query_string: Optional[str] = typer.Option(None, "--query-string", help="Search query or URL."),
+    sector: Optional[str] = typer.Option(None, "--sector", help="Sector ID for sector routing."),
+    all_sources: bool = typer.Option(False, "--all", help="Fetch from all available sources."),
+    lookback: int = typer.Option(7, "--lookback", help="Lookback days."),
+) -> None:
+    """Fetch documents from one or all source clients."""
+    from src.sources.base import SourceQuery
+    from src.sources.registry import get_client, list_available_sources
+    from src.ingestion.fetcher import ParallelFetcher
+
+    cfg = get_config()
+    query = SourceQuery(
+        ticker=ticker,
+        query_string=query_string or ticker,
+        lookback_days=lookback,
+        limit=25,
+        sector_id=sector,
+    )
+
+    if all_sources and ticker:
+        if not sector:
+            console.print("[yellow]--sector recommended with --all for proper sector routing.[/yellow]")
+        fetcher = ParallelFetcher(cfg)
+        results = fetcher.fetch_for_ticker(
+            ticker=ticker,
+            sector_id=sector or "ai_chips_compute",
+            lookback_days_quant=lookback,
+            lookback_days_qual=lookback * 2,
+        )
+    elif source:
+        try:
+            client = get_client(source, cfg)
+            if not client.is_available():
+                console.print(f"[red]Source '{source}' is not available (key not set).[/red]")
+                raise typer.Exit(code=1)
+            results = [client.fetch(query)]
+        except KeyError:
+            console.print(f"[red]Unknown source: {source!r}[/red]")
+            raise typer.Exit(code=1)
+    else:
+        console.print("[red]Provide --source <id> or --all --ticker <symbol>.[/red]")
+        raise typer.Exit(code=1)
+
+    total_docs = 0
+    table = Table(title="Fetch Results")
+    table.add_column("SOURCE")
+    table.add_column("DOCS")
+    table.add_column("ERRORS")
+    for r in results:
+        total_docs += len(r.documents)
+        err_str = "; ".join(r.errors[:2]) if r.errors else ""
+        table.add_row(
+            r.source,
+            str(len(r.documents)),
+            f"[red]{err_str[:80]}[/red]" if err_str else "[green]ok[/green]",
+        )
+    console.print(table)
+    console.print(f"[bold]Total documents:[/bold] {total_docs}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# extract / resolve / score commands
+# ─────────────────────────────────────────────────────────────────────────────
+@app.command("extract")
+def extract_cmd(
+    doc_id: str = typer.Option(..., "--doc-id", help="Document source_id to extract entities from."),
+) -> None:
+    """Run entity extraction on a stored document."""
+    from src.llm.client import complete
+    from src.ingestion.extractor import EntityExtractor
+    from src.storage.db import get_session_factory
+    from src.storage.models import Document
+
+    cfg = get_config()
+    session_factory = get_session_factory()
+    with session_factory() as session:
+        doc = session.query(Document).filter_by(source_id=doc_id).first()
+        if not doc:
+            console.print(f"[red]Document not found: {doc_id}[/red]")
+            raise typer.Exit(code=1)
+        text = doc.title or ""
+
+    extractor = EntityExtractor(
+        type("LLM", (), {"complete": staticmethod(complete)})()
+    )
+    entities = extractor.extract_companies(text)
+    console.print(f"Entities from document [cyan]{doc_id}[/cyan]:")
+    for e in entities:
+        console.print(f"  {e.get('name','')} [{e.get('ticker_guess','?')}] — {e.get('context','')}")
+
+
+@app.command("resolve")
+def resolve_cmd(
+    name: str = typer.Option(..., "--name", help="Company name to resolve to ticker."),
+) -> None:
+    """Resolve a company name to a ticker symbol."""
+    from src.llm.client import complete
+    from src.ingestion.ticker_resolver import TickerResolver
+    from src.storage.db import get_session_factory
+
+    cfg = get_config()
+    session_factory = get_session_factory()
+    resolver = TickerResolver(
+        db_session_factory=session_factory,
+        llm_client=type("LLM", (), {"complete": staticmethod(complete)})(),
+    )
+    ticker = resolver.resolve(name)
+    if ticker:
+        console.print(f"[green]{name}[/green] -> [bold]{ticker}[/bold]")
+    else:
+        console.print(f"[yellow]Could not resolve ticker for: {name}[/yellow]")
+
+
+@app.command("score")
+def score_cmd(
+    ticker: str = typer.Argument(..., help="Ticker symbol to score."),
+) -> None:
+    """Compute interestingness score for a ticker using cached data."""
+    from src.ingestion.scorer import InterestingnessScorer
+    from src.storage.db import get_session_factory
+    from src.storage.models import Company, Document, Mention
+
+    cfg = get_config()
+    session_factory = get_session_factory()
+    scorer = InterestingnessScorer()
+
+    with session_factory() as session:
+        company = session.query(Company).filter_by(ticker=ticker.upper()).first()
+        if not company:
+            console.print(f"[red]Company not found in DB: {ticker}[/red]")
+            raise typer.Exit(code=1)
+
+        mentions = session.query(Mention).filter_by(company_id=company.id).all()
+        doc_links = []
+        for m in mentions:
+            doc = session.query(Document).filter_by(id=m.document_id).first()
+            if doc:
+                from src.sources.base import SourceDocument
+                from datetime import timezone
+                sd = SourceDocument(
+                    source=doc.source,
+                    source_id=doc.source_id,
+                    url=doc.url or "",
+                    content_hash=doc.content_hash,
+                    doc_type=doc.doc_type,
+                    title=doc.title or "",
+                    published_at=doc.published_at,
+                    fetched_at=doc.fetched_at,
+                    raw_payload={},
+                )
+                doc_links.append((sd, m.weight))
+
+    if not doc_links:
+        console.print(f"[yellow]No documents found for {ticker}. Run 'fetch --all --ticker {ticker}' first.[/yellow]")
+        raise typer.Exit(code=0)
+
+    result = scorer.score_company(company.id, doc_links, cfg)
+    console.print(f"\n[bold]Interestingness score for {ticker}:[/bold] {result['score']}")
+    table = Table(title="Score Factors")
+    table.add_column("FACTOR")
+    table.add_column("VALUE")
+    for k, v in result["factors"].items():
+        table.add_row(k, str(v))
+    console.print(table)
 
 
 if __name__ == "__main__":

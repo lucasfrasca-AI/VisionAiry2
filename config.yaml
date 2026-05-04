@@ -1,227 +1,505 @@
-# VisionAiry2 — single source of truth
-# Edit this file to change sectors, watchlist, discovery params, or LLM routing.
-# Do not hardcode any of these values in code under src/.
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SECTORS — 18 entries.
-# Each: id (snake_case), label, keywords, optional arxiv_categories, specialist_sources.
-# ─────────────────────────────────────────────────────────────────────────────
 sectors:
-  - id: ai_chips_compute
-    label: AI Chips & Compute
-    keywords: [GPU, AI accelerator, datacenter compute, HBM, NVLink, inference chip,
-               training chip, TPU, neural processor, AI infrastructure, hyperscaler, photonics compute]
-    arxiv_categories: [cs.AR, cs.DC]
-    specialist_sources: [sec_edgar, github, semantic_scholar]
-
-  - id: semiconductors_fab
-    label: Semiconductors & Fabrication
-    keywords: [foundry, EUV lithography, ASML, wafer, semiconductor equipment, advanced packaging,
-               chiplet, gate-all-around, 3nm, 2nm, fab, photoresist]
-    arxiv_categories: [cond-mat.mtrl-sci, physics.app-ph]
-    specialist_sources: [sec_edgar, uspto]
-
-  - id: ai_software
-    label: AI Software & Foundation Models
-    keywords: [foundation model, LLM, generative AI, AI agent, multimodal, RAG, fine-tuning,
-               AI platform, MLOps, vector database, AI inference, AI infrastructure software]
-    arxiv_categories: [cs.AI, cs.CL, cs.LG]
-    specialist_sources: [github, semantic_scholar, arxiv]
-
-  - id: cybersecurity
-    label: Cybersecurity
-    keywords: [zero trust, EDR, XDR, SIEM, SOAR, identity security, cloud security, threat intel,
-               post-quantum cryptography, ransomware, vulnerability management, SASE]
-    arxiv_categories: [cs.CR]
-    specialist_sources: [sec_edgar, github]
-
-  - id: quantum_frontier
-    label: Quantum & Frontier Compute
-    keywords: [quantum computing, qubit, quantum supremacy, photonic computing, neuromorphic,
-               quantum error correction, superconducting qubit, ion trap, quantum networking, QKD]
-    arxiv_categories: [quant-ph]
-    specialist_sources: [arxiv, semantic_scholar, uspto]
-
-  - id: space_satellites
-    label: Space & Satellites
-    keywords: [reusable rocket, satellite constellation, LEO, earth observation, space launch,
-               in-orbit servicing, space domain awareness, lunar, Mars, propulsion, smallsat]
-    specialist_sources: [sam_gov, sec_edgar]
-
-  - id: humanoid_robotics
-    label: Humanoid Robotics
-    keywords: [humanoid robot, bipedal, dexterous manipulation, robot learning, embodied AI,
-               teleoperation, exoskeleton, whole-body control, sim-to-real]
-    arxiv_categories: [cs.RO]
-    specialist_sources: [arxiv, github, uspto]
-
-  - id: industrial_robotics
-    label: Industrial Robotics & Automation
-    keywords: [industrial automation, cobot, AMR, AGV, machine vision, factory automation,
-               warehouse automation, robotic process, motion control, robot arm]
-    arxiv_categories: [cs.RO]
-    specialist_sources: [sec_edgar, uspto]
-
-  - id: batteries_storage
-    label: Batteries & Energy Storage
-    keywords: [lithium-ion, solid-state battery, sodium-ion, LFP, NMC, grid storage, BESS,
-               battery recycling, fast charging, gigafactory, anode, cathode]
-    specialist_sources: [eia, uspto, sec_edgar]
-
-  - id: nuclear_fusion
-    label: Nuclear & Fusion
-    keywords: [SMR, small modular reactor, nuclear fusion, tokamak, stellarator, ITER, fission,
-               molten salt, advanced reactor, HALEU, breakeven, ignition]
-    specialist_sources: [eia, sec_edgar, uspto]
-
-  - id: critical_minerals
-    label: Critical Minerals & Mining
-    keywords: [lithium mining, rare earth, cobalt, nickel, graphite, copper supply, uranium,
-               permanent magnet, mineral processing, extraction, ore body, refinery]
-    specialist_sources: [sec_edgar, sam_gov]
-
-  - id: oil_gas_traditional
-    label: Oil, Gas & Traditional Energy
-    keywords: [upstream, midstream, LNG, shale, refining, oilfield services, natural gas,
-               pipeline, offshore, capex, drilling, Permian]
-    specialist_sources: [eia, sec_edgar]
-
-  - id: pharma_glp1
-    label: Pharma, Peptides & GLP-1s
-    keywords: [GLP-1, peptide therapeutic, obesity drug, semaglutide, tirzepatide, Phase 3,
-               FDA approval, biosimilar, oral GLP-1, metabolic disease, NDA, BLA]
-    specialist_sources: [openfda, pubmed, clinicaltrials]
-
-  - id: genetic_cell_therapy
-    label: Genetic Medicine & Cell Therapy
-    keywords: [CRISPR, gene therapy, CAR-T, base editing, prime editing, AAV vector, mRNA,
-               cell therapy, gene editing, ex vivo, in vivo, IND]
-    specialist_sources: [openfda, pubmed, clinicaltrials, semantic_scholar]
-
-  - id: medtech_diagnostics
-    label: Medical Devices & Diagnostics
-    keywords: [medical device, IVD, diagnostic, surgical robotics, imaging, point-of-care,
-               continuous glucose, AI diagnostic, 510k, PMA, wearable medical]
-    specialist_sources: [openfda, sec_edgar, uspto]
-
-  - id: traditional_defence
-    label: Traditional Defence
-    keywords: [missile, fighter jet, naval, armoured vehicle, ammunition, prime contractor,
-               DoD contract, FY budget, foreign military sales, sustainment, MRO]
-    specialist_sources: [sam_gov, sec_edgar]
-
-  - id: emerging_defence
-    label: Emerging Defence Tech
-    keywords: [autonomous weapons, loitering munition, counter-UAS, directed energy, hypersonic,
-               military AI, electronic warfare, dual-use, drone swarm, battle network]
-    specialist_sources: [sam_gov, github, uspto]
-
-  - id: advanced_materials
-    label: Advanced Materials
-    keywords: [graphene, metamaterial, carbon nanotube, additive manufacturing, composites,
-               superalloy, photovoltaic material, thermal management, MOF, novel polymer]
-    arxiv_categories: [cond-mat.mtrl-sci]
-    specialist_sources: [uspto, semantic_scholar, sec_edgar]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# WATCHLIST — companies tracked actively, by sector_id.
-# Tier A = bellwether / mandatory coverage; B = significant; C = secondary.
-# NOTE: This is a starter watchlist seeded with canonical large/mid-caps per sector.
-# Review and replace with your final 74-ticker list before relying on discovery output.
-# ─────────────────────────────────────────────────────────────────────────────
+- id: ai_chips_compute
+  label: AI Chips & Compute
+  keywords:
+  - GPU
+  - AI accelerator
+  - datacenter compute
+  - HBM
+  - NVLink
+  - inference chip
+  - training chip
+  - TPU
+  - neural processor
+  - AI infrastructure
+  - hyperscaler
+  - photonics compute
+  arxiv_categories:
+  - cs.AR
+  - cs.DC
+  specialist_sources:
+  - sec_edgar
+  - github
+  - semantic_scholar
+- id: semiconductors_fab
+  label: Semiconductors & Fabrication
+  keywords:
+  - foundry
+  - EUV lithography
+  - ASML
+  - wafer
+  - semiconductor equipment
+  - advanced packaging
+  - chiplet
+  - gate-all-around
+  - 3nm
+  - 2nm
+  - fab
+  - photoresist
+  arxiv_categories:
+  - cond-mat.mtrl-sci
+  - physics.app-ph
+  specialist_sources:
+  - sec_edgar
+  - uspto
+- id: ai_software
+  label: AI Software & Foundation Models
+  keywords:
+  - foundation model
+  - LLM
+  - generative AI
+  - AI agent
+  - multimodal
+  - RAG
+  - fine-tuning
+  - AI platform
+  - MLOps
+  - vector database
+  - AI inference
+  - AI infrastructure software
+  arxiv_categories:
+  - cs.AI
+  - cs.CL
+  - cs.LG
+  specialist_sources:
+  - github
+  - semantic_scholar
+  - arxiv
+- id: cybersecurity
+  label: Cybersecurity
+  keywords:
+  - zero trust
+  - EDR
+  - XDR
+  - SIEM
+  - SOAR
+  - identity security
+  - cloud security
+  - threat intel
+  - post-quantum cryptography
+  - ransomware
+  - vulnerability management
+  - SASE
+  arxiv_categories:
+  - cs.CR
+  specialist_sources:
+  - sec_edgar
+  - github
+- id: quantum_frontier
+  label: Quantum & Frontier Compute
+  keywords:
+  - quantum computing
+  - qubit
+  - quantum supremacy
+  - photonic computing
+  - neuromorphic
+  - quantum error correction
+  - superconducting qubit
+  - ion trap
+  - quantum networking
+  - QKD
+  arxiv_categories:
+  - quant-ph
+  specialist_sources:
+  - arxiv
+  - semantic_scholar
+  - uspto
+- id: space_satellites
+  label: Space & Satellites
+  keywords:
+  - reusable rocket
+  - satellite constellation
+  - LEO
+  - earth observation
+  - space launch
+  - in-orbit servicing
+  - space domain awareness
+  - lunar
+  - Mars
+  - propulsion
+  - smallsat
+  specialist_sources:
+  - sam_gov
+  - sec_edgar
+- id: humanoid_robotics
+  label: Humanoid Robotics
+  keywords:
+  - humanoid robot
+  - bipedal
+  - dexterous manipulation
+  - robot learning
+  - embodied AI
+  - teleoperation
+  - exoskeleton
+  - whole-body control
+  - sim-to-real
+  arxiv_categories:
+  - cs.RO
+  specialist_sources:
+  - arxiv
+  - github
+  - uspto
+- id: industrial_robotics
+  label: Industrial Robotics & Automation
+  keywords:
+  - industrial automation
+  - cobot
+  - AMR
+  - AGV
+  - machine vision
+  - factory automation
+  - warehouse automation
+  - robotic process
+  - motion control
+  - robot arm
+  arxiv_categories:
+  - cs.RO
+  specialist_sources:
+  - sec_edgar
+  - uspto
+- id: batteries_storage
+  label: Batteries & Energy Storage
+  keywords:
+  - lithium-ion
+  - solid-state battery
+  - sodium-ion
+  - LFP
+  - NMC
+  - grid storage
+  - BESS
+  - battery recycling
+  - fast charging
+  - gigafactory
+  - anode
+  - cathode
+  specialist_sources:
+  - eia
+  - uspto
+  - sec_edgar
+- id: nuclear_fusion
+  label: Nuclear & Fusion
+  keywords:
+  - SMR
+  - small modular reactor
+  - nuclear fusion
+  - tokamak
+  - stellarator
+  - ITER
+  - fission
+  - molten salt
+  - advanced reactor
+  - HALEU
+  - breakeven
+  - ignition
+  specialist_sources:
+  - eia
+  - sec_edgar
+  - uspto
+- id: critical_minerals
+  label: Critical Minerals & Mining
+  keywords:
+  - lithium mining
+  - rare earth
+  - cobalt
+  - nickel
+  - graphite
+  - copper supply
+  - uranium
+  - permanent magnet
+  - mineral processing
+  - extraction
+  - ore body
+  - refinery
+  specialist_sources:
+  - sec_edgar
+  - sam_gov
+- id: oil_gas_traditional
+  label: Oil, Gas & Traditional Energy
+  keywords:
+  - upstream
+  - midstream
+  - LNG
+  - shale
+  - refining
+  - oilfield services
+  - natural gas
+  - pipeline
+  - offshore
+  - capex
+  - drilling
+  - Permian
+  specialist_sources:
+  - eia
+  - sec_edgar
+- id: pharma_glp1
+  label: Pharma, Peptides & GLP-1s
+  keywords:
+  - GLP-1
+  - peptide therapeutic
+  - obesity drug
+  - semaglutide
+  - tirzepatide
+  - Phase 3
+  - FDA approval
+  - biosimilar
+  - oral GLP-1
+  - metabolic disease
+  - NDA
+  - BLA
+  specialist_sources:
+  - openfda
+  - pubmed
+  - clinicaltrials
+- id: genetic_cell_therapy
+  label: Genetic Medicine & Cell Therapy
+  keywords:
+  - CRISPR
+  - gene therapy
+  - CAR-T
+  - base editing
+  - prime editing
+  - AAV vector
+  - mRNA
+  - cell therapy
+  - gene editing
+  - ex vivo
+  - in vivo
+  - IND
+  specialist_sources:
+  - openfda
+  - pubmed
+  - clinicaltrials
+  - semantic_scholar
+- id: medtech_diagnostics
+  label: Medical Devices & Diagnostics
+  keywords:
+  - medical device
+  - IVD
+  - diagnostic
+  - surgical robotics
+  - imaging
+  - point-of-care
+  - continuous glucose
+  - AI diagnostic
+  - 510k
+  - PMA
+  - wearable medical
+  specialist_sources:
+  - openfda
+  - sec_edgar
+  - uspto
+- id: traditional_defence
+  label: Traditional Defence
+  keywords:
+  - missile
+  - fighter jet
+  - naval
+  - armoured vehicle
+  - ammunition
+  - prime contractor
+  - DoD contract
+  - FY budget
+  - foreign military sales
+  - sustainment
+  - MRO
+  specialist_sources:
+  - sam_gov
+  - sec_edgar
+- id: emerging_defence
+  label: Emerging Defence Tech
+  keywords:
+  - autonomous weapons
+  - loitering munition
+  - counter-UAS
+  - directed energy
+  - hypersonic
+  - military AI
+  - electronic warfare
+  - dual-use
+  - drone swarm
+  - battle network
+  specialist_sources:
+  - sam_gov
+  - github
+  - uspto
+- id: advanced_materials
+  label: Advanced Materials
+  keywords:
+  - graphene
+  - metamaterial
+  - carbon nanotube
+  - additive manufacturing
+  - composites
+  - superalloy
+  - photovoltaic material
+  - thermal management
+  - MOF
+  - novel polymer
+  arxiv_categories:
+  - cond-mat.mtrl-sci
+  specialist_sources:
+  - uspto
+  - semantic_scholar
+  - sec_edgar
 watchlist:
   ai_chips_compute:
-    - {ticker: NVDA, tier: A}
-    - {ticker: AMD,  tier: A}
-    - {ticker: AVGO, tier: A}
-    - {ticker: MRVL, tier: B}
+  - ticker: NVDA
+    tier: A
+  - ticker: AMD
+    tier: A
+  - ticker: AVGO
+    tier: A
+  - ticker: MRVL
+    tier: B
   semiconductors_fab:
-    - {ticker: TSM,  tier: A}
-    - {ticker: ASML, tier: A}
-    - {ticker: AMAT, tier: B}
-    - {ticker: LRCX, tier: B}
-    - {ticker: KLAC, tier: B}
+  - ticker: TSM
+    tier: A
+  - ticker: ASML
+    tier: A
+  - ticker: AMAT
+    tier: B
+  - ticker: LRCX
+    tier: B
+  - ticker: KLAC
+    tier: B
   ai_software:
-    - {ticker: MSFT,  tier: A}
-    - {ticker: GOOGL, tier: A}
-    - {ticker: META,  tier: A}
-    - {ticker: PLTR,  tier: B}
+  - ticker: MSFT
+    tier: A
+  - ticker: GOOGL
+    tier: A
+  - ticker: META
+    tier: A
+  - ticker: PLTR
+    tier: B
   cybersecurity:
-    - {ticker: CRWD, tier: A}
-    - {ticker: PANW, tier: A}
-    - {ticker: ZS,   tier: B}
-    - {ticker: S,    tier: B}
+  - ticker: CRWD
+    tier: A
+  - ticker: PANW
+    tier: A
+  - ticker: ZS
+    tier: B
+  - ticker: S
+    tier: B
   quantum_frontier:
-    - {ticker: IONQ, tier: B}
-    - {ticker: RGTI, tier: C}
-    - {ticker: QBTS, tier: C}
+  - ticker: IONQ
+    tier: B
+  - ticker: RGTI
+    tier: C
+  - ticker: QBTS
+    tier: C
   space_satellites:
-    - {ticker: RKLB, tier: A}
-    - {ticker: ASTS, tier: B}
-    - {ticker: IRDM, tier: C}
-    - {ticker: PL,   tier: C}
+  - ticker: RKLB
+    tier: A
+  - ticker: ASTS
+    tier: B
+  - ticker: IRDM
+    tier: C
+  - ticker: PL
+    tier: C
   humanoid_robotics:
-    - {ticker: TSLA, tier: A}
-    - {ticker: ABBNY, tier: B}
+  - ticker: TSLA
+    tier: A
+  - ticker: ABBNY
+    tier: B
   industrial_robotics:
-    - {ticker: ISRG, tier: A}
-    - {ticker: ROK,  tier: B}
-    - {ticker: FANUY, tier: B}
-    - {ticker: SYM,  tier: C}
+  - ticker: ISRG
+    tier: A
+  - ticker: ROK
+    tier: B
+  - ticker: FANUY
+    tier: B
+  - ticker: SYM
+    tier: C
   batteries_storage:
-    - {ticker: ALB,  tier: B}
-    - {ticker: ENPH, tier: B}
-    - {ticker: STEM, tier: C}
-    - {ticker: QS,   tier: C}
+  - ticker: ALB
+    tier: B
+  - ticker: ENPH
+    tier: B
+  - ticker: STEM
+    tier: C
+  - ticker: QS
+    tier: C
   nuclear_fusion:
-    - {ticker: CCJ,  tier: A}
-    - {ticker: BWXT, tier: B}
-    - {ticker: SMR,  tier: B}
-    - {ticker: OKLO, tier: C}
+  - ticker: CCJ
+    tier: A
+  - ticker: BWXT
+    tier: B
+  - ticker: SMR
+    tier: B
+  - ticker: OKLO
+    tier: C
   critical_minerals:
-    - {ticker: MP,   tier: B}
-    - {ticker: LAC,  tier: C}
-    - {ticker: FCX,  tier: B}
+  - ticker: MP
+    tier: B
+  - ticker: LAC
+    tier: C
+  - ticker: FCX
+    tier: B
   oil_gas_traditional:
-    - {ticker: XOM, tier: A}
-    - {ticker: CVX, tier: A}
-    - {ticker: SLB, tier: B}
-    - {ticker: OXY, tier: B}
+  - ticker: XOM
+    tier: A
+  - ticker: CVX
+    tier: A
+  - ticker: SLB
+    tier: B
+  - ticker: OXY
+    tier: B
   pharma_glp1:
-    - {ticker: NVO, tier: A}
-    - {ticker: LLY, tier: A}
-    - {ticker: VKTX, tier: C}
-    - {ticker: AMGN, tier: B}
+  - ticker: NVO
+    tier: A
+  - ticker: LLY
+    tier: A
+  - ticker: VKTX
+    tier: C
+  - ticker: AMGN
+    tier: B
   genetic_cell_therapy:
-    - {ticker: VRTX, tier: A}
-    - {ticker: CRSP, tier: B}
-    - {ticker: BEAM, tier: C}
-    - {ticker: NTLA, tier: C}
-    - {ticker: MRNA, tier: B}
+  - ticker: VRTX
+    tier: A
+  - ticker: CRSP
+    tier: B
+  - ticker: BEAM
+    tier: C
+  - ticker: NTLA
+    tier: C
+  - ticker: MRNA
+    tier: B
   medtech_diagnostics:
-    - {ticker: DXCM, tier: B}
-    - {ticker: MDT,  tier: A}
-    - {ticker: SYK,  tier: B}
-    - {ticker: ABT,  tier: A}
+  - ticker: DXCM
+    tier: B
+  - ticker: MDT
+    tier: A
+  - ticker: SYK
+    tier: B
+  - ticker: ABT
+    tier: A
   traditional_defence:
-    - {ticker: LMT, tier: A}
-    - {ticker: RTX, tier: A}
-    - {ticker: NOC, tier: A}
-    - {ticker: GD,  tier: B}
-    - {ticker: BA,  tier: B}
+  - ticker: LMT
+    tier: A
+  - ticker: RTX
+    tier: A
+  - ticker: NOC
+    tier: A
+  - ticker: GD
+    tier: B
+  - ticker: BA
+    tier: B
   emerging_defence:
-    - {ticker: AVAV, tier: B}
-    - {ticker: KTOS, tier: B}
-    - {ticker: ANDR, tier: C}
-    - {ticker: RKLB, tier: B}
+  - ticker: AVAV
+    tier: B
+  - ticker: KTOS
+    tier: B
+  - ticker: ANDR
+    tier: C
+  - ticker: RKLB
+    tier: B
   advanced_materials:
-    - {ticker: DD,  tier: B}
-    - {ticker: CE,  tier: C}
-    - {ticker: APD, tier: B}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DISCOVERY — Mode 1 parameters
-# ─────────────────────────────────────────────────────────────────────────────
+  - ticker: DD
+    tier: B
+  - ticker: CE
+    tier: C
+  - ticker: APD
+    tier: B
 discovery:
   trigger: manual
   lookback_window:
@@ -232,119 +510,102 @@ discovery:
     broad_scan: true
   top_n: 7
   report_depth: medium
-  personas_per_candidate: [wood, druckenmiller, burry, lynch]
-  estimated_cost_per_scan_usd: [1.20, 2.50]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# LLM_ROUTING — every role used in src/llm/client.py.complete(role=...) maps here.
-# `validate-keys` rewrites primary/fallback fields when a provider fails to authenticate.
-# Models are intentionally referenced by string so they can be swapped without code edits.
-# ─────────────────────────────────────────────────────────────────────────────
+  personas_per_candidate:
+  - wood
+  - druckenmiller
+  - burry
+  - lynch
+  estimated_cost_per_scan_usd:
+  - 1.2
+  - 2.5
 llm_routing:
-  # ── Volume tasks (cheap, high-throughput) ─────────────────────────────────
   entity_extraction:
     provider: deepseek
-    model: deepseek-chat            # V4 Flash
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-flash
+    model: deepseek-chat
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 1024
     temperature: 0.0
-
   sector_classifier:
     provider: deepseek
     model: deepseek-chat
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-flash
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 256
     temperature: 0.0
-
   document_summary:
-    provider: gemini
-    model: gemini-2.5-flash
+    provider: deepseek
+    model: deepseek-chat
     fallback_provider: deepseek
     fallback_model: deepseek-chat
     max_tokens: 2048
     temperature: 0.2
-
   source_dedupe:
     provider: deepseek
     model: deepseek-chat
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-flash
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 512
     temperature: 0.0
-
-  # ── Reasoning tasks ───────────────────────────────────────────────────────
   candidate_scoring:
     provider: deepseek
-    model: deepseek-reasoner        # V4 Pro
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-pro
+    model: deepseek-reasoner
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 4096
     temperature: 0.3
-
   persona_agents:
     provider: deepseek
     model: deepseek-reasoner
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-pro
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 4096
     temperature: 0.5
-
-  # ── Synthesis tasks ───────────────────────────────────────────────────────
   cross_candidate:
-    provider: anthropic
-    model: claude-haiku-4-5
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-pro
+    provider: deepseek
+    model: deepseek-chat
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 4096
     temperature: 0.3
-
   daily_brief_writer:
-    provider: anthropic
-    model: claude-haiku-4-5
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-pro
+    provider: deepseek
+    model: deepseek-chat
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 4096
     temperature: 0.4
-
   gap_analysis:
-    provider: anthropic
-    model: claude-haiku-4-5
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-pro
+    provider: deepseek
+    model: deepseek-chat
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 2048
     temperature: 0.3
-
   report_writer:
-    provider: anthropic
-    model: claude-haiku-4-5
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-pro
+    provider: deepseek
+    model: deepseek-chat
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 8192
     temperature: 0.4
-
-  # ── Escalation (rarely invoked, expensive) ────────────────────────────────
   escalation:
-    provider: anthropic
-    model: claude-sonnet-4-6
-    fallback_provider: gemini
-    fallback_model: gemini-2.5-pro
+    provider: deepseek
+    model: deepseek-chat
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 8192
     temperature: 0.3
-
-  # ── Generic fallback shorthand handles (reserved for cross-provider use) ──
   deepseek_fallback:
-    provider: gemini
-    model: gemini-2.5-flash
-    fallback_provider: anthropic
-    fallback_model: claude-haiku-4-5
+    provider: deepseek
+    model: deepseek-chat
+    fallback_provider: deepseek
+    fallback_model: deepseek-chat
     max_tokens: 2048
     temperature: 0.2
-
   claude_fallback:
-    provider: gemini
-    model: gemini-2.5-pro
+    provider: deepseek
+    model: deepseek-chat
     fallback_provider: deepseek
     fallback_model: deepseek-reasoner
     max_tokens: 4096
