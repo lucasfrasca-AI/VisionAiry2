@@ -632,16 +632,92 @@ def ping_cmd() -> None:
 
 
 @app.command("discover")
-def discover_cmd() -> None:
-    """Mode 1 — discovery scan. Implemented in Session 3."""
-    console.print("[yellow]Mode 1 not yet implemented (Session 3).[/yellow]")
+def discover_cmd(
+    sectors: Optional[str] = typer.Option(None, "--sectors",
+        help="Comma-separated sector IDs to scan. Defaults to all sectors."),
+    lookback_quant: int = typer.Option(7, "--lookback-quant",
+        help="Lookback days for quantitative data."),
+    lookback_qual: int = typer.Option(14, "--lookback-qual",
+        help="Lookback days for qualitative data."),
+    top_n: int = typer.Option(7, "--top-n", help="Number of top candidates to report."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+        help="Discover and score candidates without generating full reports."),
+) -> None:
+    """Mode 1 — autonomous discovery scan across sectors."""
+    from src.modes.discover import run_discovery
+    from src.storage.db import get_session_factory
+
+    sector_list = [s.strip() for s in sectors.split(",")] if sectors else None
+    session_factory = get_session_factory()
+
+    t0 = __import__("time").time()
+    console.print(f"[bold]Starting discovery scan[/bold] — dry_run={dry_run}, top_n={top_n}")
+
+    def _progress(msg: str):
+        elapsed = round(__import__("time").time() - t0, 1)
+        console.print(f"[dim][{elapsed}s][/dim] {msg}")
+
+    result = run_discovery(
+        sectors=sector_list,
+        lookback_days_quant=lookback_quant,
+        lookback_days_qual=lookback_qual,
+        top_n=top_n,
+        dry_run=dry_run,
+        db_session_factory=session_factory,
+        progress_cb=_progress,
+    )
+
+    console.print(f"\n[bold green]Scan complete[/bold green] in {result.get('elapsed_sec', '?')}s")
+    console.print(f"Candidates surfaced: [bold]{result.get('n_candidates', 0)}[/bold]")
+    console.print(f"Top {top_n}: [bold]{result.get('top_n_tickers', [])}[/bold]")
+    console.print(f"Total cost: [bold]${result.get('total_cost_usd', 0):.4f}[/bold]")
+    if result.get("brief_path"):
+        console.print(f"Brief: [cyan]{result['brief_path']}[/cyan]")
+    if result.get("candidate_reports"):
+        table = Table(title="Candidate Reports")
+        table.add_column("TICKER")
+        table.add_column("RECOMMENDATION")
+        table.add_column("CONVICTION")
+        table.add_column("COST")
+        table.add_column("REPORT")
+        for cr in result["candidate_reports"]:
+            rp = cr.get("report_path", "")
+            table.add_row(
+                cr.get("ticker", "?"),
+                cr.get("recommendation", "N/A"),
+                cr.get("conviction", "N/A"),
+                f"${cr.get('cost_usd', 0):.4f}",
+                f"[cyan]{rp}[/cyan]" if rp else "[red]failed[/red]",
+            )
+        console.print(table)
 
 
 @app.command("analyse-doc")
-def analyse_doc_cmd(url: str = typer.Argument(...)) -> None:
-    """Mode 3 — analyse a document by URL. Implemented in Session 3."""
-    _ = url
-    console.print("[yellow]Mode 3 not yet implemented (Session 3).[/yellow]")
+def analyse_doc_cmd(
+    url_or_path: str = typer.Argument(..., help="URL or local file path to analyse."),
+) -> None:
+    """Mode 3 — analyse a document or URL for investment-relevant signals."""
+    from src.modes.analyse_doc import analyse_document
+    from src.storage.db import get_session_factory
+
+    session_factory = get_session_factory()
+    t0 = __import__("time").time()
+    console.print(f"[bold]Analysing:[/bold] {url_or_path}")
+
+    def _progress(msg: str):
+        elapsed = round(__import__("time").time() - t0, 1)
+        console.print(f"[dim][{elapsed}s][/dim] {msg}")
+
+    result = analyse_document(
+        url_or_path=url_or_path,
+        db_session_factory=session_factory,
+        progress_cb=_progress,
+    )
+
+    console.print(f"\n[bold green]Analysis complete[/bold green]")
+    console.print(f"Tickers found: [bold]{result.get('tickers_found', [])}[/bold]")
+    console.print(f"Total cost: [bold]${result.get('total_cost_usd', 0):.4f}[/bold]")
+    console.print(f"Report: [cyan]{result.get('report_path', '?')}[/cyan]")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

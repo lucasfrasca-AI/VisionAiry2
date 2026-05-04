@@ -17,6 +17,7 @@ from src.llm import claude as _claude
 from src.llm import deepseek as _deepseek
 from src.llm import gemini as _gemini
 from src.llm.fallback import FallbackError, call_with_fallback
+from src.llm.pricing import estimate_cost
 from src.storage.db import session_scope
 from src.storage.repositories import AgentRunRepo
 
@@ -108,6 +109,79 @@ def complete(
     if log_to_db:
         _record(agent_name or role, role, used_provider, used_model, status, usage, started)
     return text
+
+
+def complete_with_meta(
+    role: str,
+    system: str,
+    user: str,
+    *,
+    agent_name: str | None = None,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    log_to_db: bool = True,
+) -> tuple[str, dict[str, Any]]:
+    """Like complete() but also returns metadata dict with token counts and cost."""
+    cfg = get_config()
+    routing: RoleRouting = cfg.role(role)
+
+    mt = max_tokens if max_tokens is not None else routing.max_tokens
+    temp = temperature if temperature is not None else routing.temperature
+
+    primary = _adapter_call(routing.provider, routing.model, system, user, mt, temp)
+    fallback = None
+    if routing.fallback_provider and routing.fallback_model:
+        fallback = _adapter_call(
+            routing.fallback_provider, routing.fallback_model, system, user, mt, temp
+        )
+
+    started = time.time()
+    used_provider = routing.provider
+    used_model = routing.model
+
+    def _on_primary_fail(exc: BaseException) -> None:
+        nonlocal used_provider, used_model
+        log.warning("LLM primary failed for role=%s: %r", role, exc)
+        used_provider = routing.fallback_provider or routing.provider
+        used_model = routing.fallback_model or routing.model
+
+    status = "failed"
+    text = ""
+    usage: dict[str, Any] = {}
+    fallback_used = False
+    try:
+        text, usage, status = call_with_fallback(primary, fallback, _on_primary_fail)
+        fallback_used = (status == "fallback")
+    except FallbackError as e:
+        status = "failed"
+        log.error("LLM role=%s failed: %s", role, e)
+        if log_to_db:
+            _record(agent_name or role, role, used_provider, used_model, status, usage, started)
+        raise
+    except Exception:
+        if log_to_db:
+            _record(agent_name or role, role, used_provider, used_model, status, usage, started)
+        raise
+
+    latency_ms = int((time.time() - started) * 1000)
+    tokens_in = usage.get("input_tokens") or 0
+    tokens_out = usage.get("output_tokens") or 0
+    cost = estimate_cost(used_model, tokens_in, tokens_out)
+
+    if log_to_db:
+        _record(agent_name or role, role, used_provider, used_model, status, usage, started)
+
+    meta: dict[str, Any] = {
+        "model": used_model,
+        "provider": used_provider,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "cost_usd": cost,
+        "latency_ms": latency_ms,
+        "fallback_used": fallback_used,
+        "status": status,
+    }
+    return text, meta
 
 
 def _record(agent: str, role: str, provider: str, model: str,
