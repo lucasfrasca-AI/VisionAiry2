@@ -60,81 +60,98 @@
   <div>
     <div class="flex items-center justify-between mb-3">
       <h2 class="text-base font-semibold text-slate-700">Recent Reports</h2>
-      <div class="flex items-center gap-3 text-xs text-slate-500">
-        <label class="flex items-center gap-1.5 cursor-pointer select-none">
-          <input type="checkbox" id="triage-toggle" class="rounded" onchange="window._triageToggle(this.checked)">
-          Triage view (hide WATCHLIST/PRE-IPO)
-        </label>
-      </div>
+      <label class="flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-500">
+        <input type="checkbox" id="triage-toggle" class="rounded" onchange="window._triageToggle(this.checked)">
+        Triage view (hide WATCHLIST/PRE-IPO)
+      </label>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="report-cards">
       {% for r in latest_reports %}
+
       {% if r.track == "established" %}
-        {# Visual hierarchy class based on rec/conviction #}
+        {# Border class: top for CORE/STARTER HIGH and AVOID HIGH; none otherwise #}
         {% if r.recommendation in ['CORE', 'STARTER'] and r.conviction == 'HIGH' %}
-          {% set card_cls = "bg-white rounded-xl border-t-2 border-t-emerald-400 border-b border-l border-r border-slate-200 shadow-sm p-5 hover:shadow-md transition-all block" %}
+          {% set border_cls = "border-t-2 border-t-emerald-400 border-b border-l border-r border-slate-200" %}
         {% elif r.recommendation == 'AVOID' and r.conviction == 'HIGH' %}
-          {% set card_cls = "bg-white rounded-xl border border-slate-200 border-l-4 border-l-rose-400 shadow-sm p-5 hover:shadow-md transition-all block" %}
-        {% elif r.recommendation == 'AVOID' %}
-          {% set card_cls = "bg-white rounded-xl border border-slate-200 border-l-4 border-l-rose-200 shadow-sm p-5 hover:shadow-md transition-all block" %}
+          {% set border_cls = "border-t-2 border-t-rose-400 border-b border-l border-r border-slate-200" %}
         {% else %}
-          {% set card_cls = "bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-indigo-300 hover:shadow-md transition-all block" %}
+          {% set border_cls = "border border-slate-200" %}
         {% endif %}
         <a href="/reports/{{ r.identifier }}/{{ r.timestamp }}"
-           class="{{ card_cls }}" data-rec="{{ r.recommendation }}" data-track="established">
-          <!-- Header -->
-          <div class="flex items-start justify-between gap-2">
-            <span class="text-2xl font-bold text-slate-900">{{ r.identifier }}</span>
-            <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
-              {{ recommendation_badge(r.recommendation, r.conviction) }}
-              {{ track_badge(r.track) }}
-            </div>
+           class="bg-white rounded-xl {{ border_cls }} shadow-sm p-4 hover:shadow-md hover:border-indigo-200 transition-all block"
+           data-rec="{{ r.recommendation }}" data-track="established">
+
+          <!-- Row 1: ticker on left, track badge on right -->
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <span class="text-xl font-bold text-slate-900 leading-tight">{{ r.identifier }}</span>
+            {{ track_badge(r.track) }}
           </div>
-          <!-- Price row -->
-          <div class="mt-2 flex items-center gap-3 text-sm min-h-[1.5rem]">
-            <span class="font-semibold text-slate-800" data-live-price="{{ r.identifier }}">—</span>
-            <span class="text-xs" data-live-change="{{ r.identifier }}">—</span>
-            <span class="text-xs text-slate-400 ml-auto" data-live-mcap="{{ r.identifier }}">—</span>
+
+          <!-- Row 2: live price (large), day change, market cap -->
+          <div class="flex items-baseline gap-2 mb-2 min-h-[1.75rem]">
+            <span class="text-base font-bold text-slate-800" data-live-price="{{ r.identifier }}">—</span>
+            <span class="text-xs font-medium" data-live-change="{{ r.identifier }}">—</span>
+            <span class="text-xs text-slate-400 ml-auto font-mono" data-live-mcap="{{ r.identifier }}">—</span>
           </div>
-          <!-- Sector + date -->
-          <div class="mt-0.5 flex items-center justify-between text-xs text-slate-400">
-            {% if r.sector_id %}<span class="text-indigo-600 font-medium">{{ r.sector_id }}</span>{% else %}<span></span>{% endif %}
-            <span>{{ r.timestamp_display }}</span>
+
+          <!-- Row 3: recommendation badge -->
+          <div class="mb-2">
+            {{ recommendation_badge(r.recommendation, r.conviction) }}
           </div>
-          <!-- 1-line thesis -->
+
+          <!-- Row 4: sector on left, timestamp on right -->
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            {% if r.sector_id %}<span class="text-indigo-500 font-medium truncate max-w-[60%]">{{ r.sector_id }}</span>{% else %}<span></span>{% endif %}
+            <span class="flex-shrink-0">{{ r.timestamp_display }}</span>
+          </div>
+
+          <!-- Row 5: 1-line thesis -->
           {% if r.thesis %}
-          <p class="mt-2 text-xs text-slate-600 leading-relaxed line-clamp-2">{{ r.thesis }}</p>
+          <p class="text-[11px] text-slate-500 leading-snug line-clamp-1 mb-2">{{ r.thesis }}</p>
           {% endif %}
-          <!-- Persona pills -->
+
+          <!-- Row 6: persona pills — single-line strip, no wrap -->
           {% if r.persona_pills %}
-          <div class="mt-2 flex flex-wrap gap-1">
+          <div class="flex gap-1 overflow-hidden" style="flex-wrap:nowrap">
             {% for abbrev, verdict in r.persona_pills.items() %}
             {{ persona_pill(abbrev, verdict) }}
             {% endfor %}
           </div>
           {% endif %}
+
         </a>
+
       {% else %}
+        {# Pre-IPO: sky left border, no background tint #}
         <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}"
-           class="bg-sky-50 rounded-xl border border-sky-200 shadow-sm p-5 hover:border-sky-400 hover:shadow-md transition-all block" data-rec="{{ r.recommendation }}" data-track="emerging_pre_ipo">
-          <!-- Header -->
-          <div class="flex items-start justify-between gap-2">
-            <span class="text-sm font-bold text-slate-900 leading-tight">{{ r.display_name }}</span>
+           class="bg-white rounded-xl border border-slate-200 border-l-2 border-l-sky-300 shadow-sm p-4 hover:shadow-md hover:border-l-sky-400 transition-all block"
+           data-rec="{{ r.recommendation }}" data-track="emerging_pre_ipo">
+
+          <!-- Row 1: display name on left, PRE-IPO badge on right -->
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <span class="text-sm font-bold text-slate-800 leading-tight">{{ r.display_name }}</span>
             {{ track_badge(r.track) }}
           </div>
-          <!-- Rec + sector -->
-          <div class="mt-2 flex items-center gap-2 flex-wrap">
+
+          <!-- Row 2: recommendation badge -->
+          <div class="mb-2">
             {{ recommendation_badge(r.recommendation, r.conviction) }}
-            {% if r.sector_id %}<span class="text-xs text-sky-600 font-medium">{{ r.sector_id }}</span>{% endif %}
           </div>
-          <!-- Thesis / why surfaced -->
+
+          <!-- Row 3: sector on left, timestamp on right -->
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            {% if r.sector_id %}<span class="text-sky-500 font-medium truncate max-w-[60%]">{{ r.sector_id }}</span>{% else %}<span></span>{% endif %}
+            <span class="flex-shrink-0">{{ r.timestamp_display }}</span>
+          </div>
+
+          <!-- Row 4: 1-line why-surfaced thesis -->
           {% if r.thesis %}
-          <p class="mt-2 text-xs text-slate-500 leading-relaxed line-clamp-2">{{ r.thesis }}</p>
+          <p class="text-[11px] text-slate-500 leading-snug line-clamp-1">{{ r.thesis }}</p>
           {% endif %}
-          <!-- Date -->
-          <div class="mt-2 text-xs text-slate-400">{{ r.timestamp_display }}</div>
+
         </a>
       {% endif %}
+
       {% endfor %}
     </div>
   </div>
@@ -158,12 +175,37 @@
 {% endblock %}
 
 {% block scripts %}
-{% if established_tickers %}
 <script>
+// ── Triage toggle (persisted in localStorage) ──────────────────────────────
+(function() {
+  var stored = localStorage.getItem('visionairy2_triage');
+  if (stored === '1') {
+    var cb = document.getElementById('triage-toggle');
+    if (cb) { cb.checked = true; window._triageToggle(true); }
+  }
+})();
+
+window._triageToggle = function(hide) {
+  localStorage.setItem('visionairy2_triage', hide ? '1' : '0');
+  document.querySelectorAll('#report-cards > a').forEach(function(card) {
+    if (!hide) { card.style.display = ''; return; }
+    var rec = card.getAttribute('data-rec') || '';
+    var track = card.getAttribute('data-track') || '';
+    if (track === 'emerging_pre_ipo' || rec === 'WATCHLIST' || rec === 'INSUFFICIENT_DATA') {
+      card.style.display = 'none';
+    } else {
+      card.style.display = '';
+    }
+  });
+};
+
+{% if established_tickers %}
+// ── Live prices ────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async function() {
-  const tickers = {{ established_tickers | tojson }};
-  const prices = await loadPriceBulk(tickers);
-  for (const [ticker, data] of Object.entries(prices)) {
+  var tickers = {{ established_tickers | tojson }};
+  var prices = await loadPriceBulk(tickers);
+  for (var ticker in prices) {
+    var data = prices[ticker];
     if (!data) continue;
     document.querySelectorAll('[data-live-price="' + ticker + '"]').forEach(function(el) {
       if (data.current_price != null) el.textContent = '$' + data.current_price.toFixed(2);
@@ -172,7 +214,7 @@ window.addEventListener('DOMContentLoaded', async function() {
       if (data.day_change_pct != null) {
         var pct = data.day_change_pct;
         el.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
-        el.className = 'text-xs ' + (pct >= 0 ? 'text-emerald-600' : 'text-rose-600');
+        el.className = 'text-xs font-medium ' + (pct >= 0 ? 'text-emerald-600' : 'text-rose-600');
       }
     });
     document.querySelectorAll('[data-live-mcap="' + ticker + '"]').forEach(function(el) {
@@ -181,20 +223,10 @@ window.addEventListener('DOMContentLoaded', async function() {
       }
     });
   }
+  // Re-apply triage after prices load (in case checkbox was restored from localStorage)
+  var cb = document.getElementById('triage-toggle');
+  if (cb && cb.checked) window._triageToggle(true);
 });
-
-window._triageToggle = function(hide) {
-  document.querySelectorAll('#report-cards > a').forEach(function(card) {
-    if (!hide) { card.style.display = ''; return; }
-    const rec = card.getAttribute('data-rec') || '';
-    const track = card.getAttribute('data-track') || '';
-    if (track === 'emerging_pre_ipo' || rec === 'WATCHLIST' || rec === 'INSUFFICIENT_DATA') {
-      card.style.display = 'none';
-    } else {
-      card.style.display = '';
-    }
-  });
-};
-</script>
 {% endif %}
+</script>
 {% endblock %}

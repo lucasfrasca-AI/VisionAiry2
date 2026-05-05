@@ -79,17 +79,9 @@
       </thead>
       <tbody class="divide-y divide-slate-100" id="reports-tbody">
         {% for r in reports %}
-        {# Row tint by recommendation #}
-        {% if r.recommendation in ['CORE', 'STARTER'] and r.conviction == 'HIGH' %}
-          {% set row_cls = "hover:bg-emerald-50 transition-colors cursor-pointer" %}
-        {% elif r.recommendation == 'AVOID' and r.conviction == 'HIGH' %}
-          {% set row_cls = "hover:bg-rose-50 transition-colors cursor-pointer" %}
-        {% elif r.track == 'emerging_pre_ipo' %}
-          {% set row_cls = "hover:bg-sky-50 transition-colors cursor-pointer" %}
-        {% else %}
-          {% set row_cls = "hover:bg-slate-50 transition-colors cursor-pointer" %}
-        {% endif %}
-        <tr class="{{ row_cls }}" onclick="window._toggleExpand('{{ r.identifier }}-{{ r.timestamp }}')">
+        {% set row_id = r.identifier ~ '-' ~ r.timestamp %}
+        <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
+            onclick="window._toggleExpand('{{ row_id }}')">
           <td class="px-4 py-3">{{ track_badge(r.track) }}</td>
           <td class="px-4 py-3 font-medium text-slate-900">
             {% if r.track == "established" %}
@@ -115,26 +107,41 @@
             {% endif %}
           </td>
         </tr>
-        <!-- Expandable detail row -->
-        <tr id="expand-{{ r.identifier }}-{{ r.timestamp }}" class="hidden bg-slate-50">
-          <td colspan="9" class="px-6 py-3 border-b border-slate-100">
-            {% if r.thesis %}
-            <p class="text-xs text-slate-700 mb-2">{{ r.thesis }}</p>
-            {% endif %}
-            {% if r.persona_pills %}
-            <div class="flex flex-wrap gap-1.5 mb-2">
-              {% for abbrev, verdict in r.persona_pills.items() %}
-              {{ persona_pill(abbrev, verdict) }}
-              {% endfor %}
-            </div>
-            {% endif %}
-            <div class="flex gap-3 text-xs">
-              {% if r.track == "established" %}
-                <a href="/reports/{{ r.identifier }}/{{ r.timestamp }}" class="text-indigo-600 hover:text-indigo-800 font-medium">Open full report →</a>
-              {% else %}
-                <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}" class="text-sky-600 hover:text-sky-800 font-medium">Open full report →</a>
-              {% endif %}
-              {% if r.cost_usd is not none %}<span class="text-slate-400">Cost: ${{ "%.4f"|format(r.cost_usd) }}</span>{% endif %}
+        <!-- Expandable detail row — animated via max-height transition -->
+        <tr class="bg-slate-50/60">
+          <td colspan="9" class="px-0 border-b border-slate-100 p-0">
+            <div id="expand-{{ row_id }}"
+                 style="max-height:0;overflow:hidden;transition:max-height 0.2s ease-out">
+              <div class="px-6 py-3 space-y-2">
+                {% if r.thesis %}
+                <p class="text-xs text-slate-700">{{ r.thesis }}</p>
+                {% endif %}
+                {% if r.persona_pills %}
+                <div class="flex gap-1" style="flex-wrap:nowrap;overflow:hidden">
+                  {% for abbrev, verdict in r.persona_pills.items() %}
+                  {{ persona_pill(abbrev, verdict) }}
+                  {% endfor %}
+                </div>
+                {% endif %}
+                {% if r.risks %}
+                <ul class="space-y-0.5">
+                  {% for risk in r.risks %}
+                  <li class="text-[11px] text-slate-500 flex gap-1.5">
+                    <span class="text-rose-400 flex-shrink-0">▲</span>
+                    <span>{{ risk }}</span>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+                <div class="flex gap-3 text-xs pt-0.5">
+                  {% if r.track == "established" %}
+                    <a href="/reports/{{ r.identifier }}/{{ r.timestamp }}" class="text-indigo-600 hover:text-indigo-800 font-medium">Open full report →</a>
+                  {% else %}
+                    <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}" class="text-sky-600 hover:text-sky-800 font-medium">Open full report →</a>
+                  {% endif %}
+                  {% if r.cost_usd is not none %}<span class="text-slate-400">Cost: ${{ "%.4f"|format(r.cost_usd) }}</span>{% endif %}
+                </div>
+              </div>
             </div>
           </td>
         </tr>
@@ -164,24 +171,32 @@
 {% endblock %}
 
 {% block scripts %}
-{% set established_in_list = reports | selectattr('track', 'equalto', 'established') | list %}
-{% if established_in_list %}
 <script>
 window._toggleExpand = function(id) {
   var el = document.getElementById('expand-' + id);
-  if (el) el.classList.toggle('hidden');
+  if (!el) return;
+  if (el.getAttribute('data-open') === '1') {
+    el.style.maxHeight = '0';
+    el.removeAttribute('data-open');
+  } else {
+    el.style.maxHeight = el.scrollHeight + 'px';
+    el.setAttribute('data-open', '1');
+  }
 };
 
+{% set established_in_list = reports | selectattr('track', 'equalto', 'established') | list %}
+{% if established_in_list %}
 window.addEventListener('DOMContentLoaded', async function() {
-  const tickers = [];
+  var tickers = [];
   document.querySelectorAll('[data-list-price]').forEach(function(el) {
-    const t = el.getAttribute('data-list-price');
+    var t = el.getAttribute('data-list-price');
     if (t && tickers.indexOf(t) === -1) tickers.push(t);
   });
   if (!tickers.length) return;
 
-  const prices = await loadPriceBulk(tickers);
-  for (const [ticker, data] of Object.entries(prices)) {
+  var prices = await loadPriceBulk(tickers);
+  for (var ticker in prices) {
+    var data = prices[ticker];
     if (!data) continue;
     document.querySelectorAll('[data-list-price="' + ticker + '"]').forEach(function(el) {
       if (data.current_price != null) el.textContent = '$' + data.current_price.toFixed(2);
@@ -200,13 +215,6 @@ window.addEventListener('DOMContentLoaded', async function() {
     });
   }
 });
-</script>
-{% else %}
-<script>
-window._toggleExpand = function(id) {
-  var el = document.getElementById('expand-' + id);
-  if (el) el.classList.toggle('hidden');
-};
-</script>
 {% endif %}
+</script>
 {% endblock %}

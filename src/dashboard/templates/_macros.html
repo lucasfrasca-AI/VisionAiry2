@@ -35,18 +35,27 @@
 {% endmacro %}
 
 {% macro persona_pill(persona, verdict) %}
-  {% set buy_verdicts = ["BUY", "STRONG_BUY", "CORE", "STARTER"] %}
-  {% set avoid_verdicts = ["AVOID", "STRONG_AVOID", "SELL"] %}
-  {% if verdict | upper in buy_verdicts %}
-    {% set cls = "bg-emerald-100 text-emerald-800 border-emerald-300" %}
-  {% elif verdict | upper in avoid_verdicts %}
-    {% set cls = "bg-rose-100 text-rose-800 border-rose-300" %}
-  {% elif verdict | upper == "WATCHLIST" %}
-    {% set cls = "bg-amber-100 text-amber-800 border-amber-300" %}
+  {# Abbreviate compound verdicts to fit on one line #}
+  {% set abbrev_map = {
+    "STRONG_CONVICTION": "STRONG",
+    "MODERATE_CONVICTION": "MOD",
+    "BEAR_CONVICTION": "BEAR",
+    "STRONG_BUY": "SBUY",
+    "STRONG_AVOID": "SAVOID",
+    "INSUFFICIENT_DATA": "N/A",
+    "WATCHLIST": "WATCH"
+  } %}
+  {% set v = abbrev_map.get(verdict | upper, verdict | upper) if verdict else "—" %}
+  {% set buy_verdicts = ["BUY", "SBUY", "STRONG", "CORE", "STARTER"] %}
+  {% set avoid_verdicts = ["AVOID", "SAVOID", "SELL", "BEAR"] %}
+  {% if v in buy_verdicts %}
+    {% set cls = "bg-emerald-50 text-emerald-800 border-emerald-200" %}
+  {% elif v in avoid_verdicts %}
+    {% set cls = "bg-rose-50 text-rose-700 border-rose-200" %}
+  {% elif v in ["WATCH", "WATCHLIST", "MONITOR"] %}
+    {% set cls = "bg-amber-50 text-amber-800 border-amber-200" %}
   {% else %}
-    {% set cls = "bg-slate-100 text-slate-700 border-slate-300" %}
+    {% set cls = "bg-slate-50 text-slate-600 border-slate-200" %}
   {% endif %}
-  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium {{ cls }}">
-    <span class="font-semibold">{{ persona }}</span> {{ verdict or "—" }}
-  </span>
+  <span class="inline-flex items-center px-1.5 py-0.5 rounded border font-mono text-[11px] whitespace-nowrap {{ cls }}">{{ persona }}:{{ v }}</span>
 {% endmacro %}

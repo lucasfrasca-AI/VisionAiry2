@@ -142,6 +142,7 @@ def list_reports(track: str | None = None) -> list[dict]:
                         "size_bytes": _dir_size(ts_dir),
                         "thesis": _extract_thesis(md_text),
                         "persona_pills": _extract_personas_from_md(md_text),
+                        "risks": _extract_top_risks(md_text),
                     })
 
     if track in (None, "emerging_pre_ipo"):
@@ -364,6 +365,27 @@ def _extract_personas_from_md(md_text: str) -> dict[str, str]:
                 verdicts[abbrev] = verdict
                 break
     return verdicts
+
+
+def _extract_top_risks(md_text: str) -> list[str]:
+    """Return up to 2 risks from the numbered 'Top N risks' list in the Risk section."""
+    # Locate the Risk section
+    risk_section_m = re.search(r"^## \d*\.?\s*Risk", md_text, re.MULTILINE | re.IGNORECASE)
+    if not risk_section_m:
+        return []
+    next_h2 = re.search(r"^## ", md_text[risk_section_m.end():], re.MULTILINE)
+    risk_block = md_text[risk_section_m.end(): risk_section_m.end() + next_h2.start()] if next_h2 else md_text[risk_section_m.end():]
+
+    # Find numbered items (1. 2. 3.) — prefer those under "Top N risks:" subheader
+    items = re.findall(r"^\d+\.\s+(.+)$", risk_block, re.MULTILINE)
+    risks = []
+    for item in items[:2]:
+        # Strip bold markers from "**Label:** text" → "Label: text"
+        clean = re.sub(r"\*\*(.+?)\*\*:?\s*", r"\1: ", item)
+        clean = re.sub(r"::\s*", ": ", clean).strip().rstrip(".")
+        if len(clean) > 15:
+            risks.append(clean[:115])
+    return risks
 
 
 def _extract_persona_verdicts(reasoning: dict[str, str]) -> dict[str, str]:
