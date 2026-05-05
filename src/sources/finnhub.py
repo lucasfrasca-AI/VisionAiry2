@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone, timedelta
-from typing import Any
+from typing import Any, Optional
 
 from src.sources.base import (
     BaseSourceClient,
@@ -182,6 +182,52 @@ class FinnhubClient(BaseSourceClient):
                         )
                     )
 
+            elif endpoint == "calendar/ipo":
+                d1_ipo = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+                d2_ipo = (now + timedelta(days=90)).strftime("%Y-%m-%d")
+                resp = self._http_get(
+                    "https://finnhub.io/api/v1/calendar/ipo",
+                    params={"from": d1_ipo, "to": d2_ipo, "token": key},
+                )
+                data = resp.json() or {}
+                for item in (data.get("ipoCalendar") or [])[: query.limit]:
+                    symbol = item.get("symbol") or ""
+                    name = item.get("name") or ""
+                    ipo_date = item.get("date") or ""
+                    exchange = item.get("exchange") or ""
+                    price = item.get("price") or ""
+                    ipo_status = item.get("status") or ""
+                    n_shares = item.get("numberOfShares") or 0
+                    total_val = item.get("totalSharesValue") or 0
+                    uid = symbol or self._content_hash((name or "") + (ipo_date or ""))[:16]
+                    published_at_ipo: Optional[datetime] = None
+                    if ipo_date:
+                        try:
+                            published_at_ipo = datetime.strptime(ipo_date[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                        except ValueError:
+                            pass
+                    try:
+                        n_shares_fmt = f"{int(n_shares):,}"
+                    except (ValueError, TypeError):
+                        n_shares_fmt = str(n_shares)
+                    try:
+                        total_fmt = f"${float(total_val):,.0f}"
+                    except (ValueError, TypeError):
+                        total_fmt = str(total_val)
+                    docs.append(SourceDocument(
+                        source=self.source_id,
+                        source_id=uid[:16],
+                        url=f"https://finnhub.io/calendar/ipo?symbol={symbol}" if symbol else "",
+                        content_hash=self._content_hash(uid),
+                        doc_type="filing",
+                        title=f"IPO: {name} ({symbol}, {exchange}, {ipo_date}, ${price})",
+                        published_at=published_at_ipo,
+                        fetched_at=fetched_at,
+                        raw_payload=item,
+                        summary=f"Status: {ipo_status}. Shares: {n_shares_fmt}. Total value: {total_fmt}.",
+                        entities_mentioned=[name] if name else [],
+                    ))
+
             elif endpoint == "earnings":
                 resp = self._http_get(
                     "https://finnhub.io/api/v1/calendar/earnings",
@@ -206,6 +252,38 @@ class FinnhubClient(BaseSourceClient):
                             raw_payload=item,
                         )
                     )
+
+            elif endpoint == "news/general-small-cap":
+                resp = self._http_get(
+                    "https://finnhub.io/api/v1/news",
+                    params={"category": "general", "token": key},
+                )
+                all_news = resp.json() or []
+                kept = 0
+                for item in all_news[: min(query.limit * 3, 50)]:
+                    if kept >= min(query.limit, 50):
+                        break
+                    related = item.get("related", "") or ""
+                    if not related:
+                        continue
+                    raw_id = str(item.get("id", ""))
+                    ts = item.get("datetime")
+                    pub_at = datetime.fromtimestamp(ts, tz=timezone.utc) if ts else None
+                    uid = raw_id or self._content_hash(item.get("headline", "") + item.get("url", ""))
+                    docs.append(SourceDocument(
+                        source=self.source_id,
+                        source_id=uid[:16],
+                        url=item.get("url", ""),
+                        content_hash=self._content_hash(uid),
+                        doc_type="news",
+                        title=item.get("headline", ""),
+                        published_at=pub_at,
+                        fetched_at=fetched_at,
+                        raw_payload=item,
+                        summary=item.get("summary"),
+                        entities_mentioned=[t.strip() for t in related.split(",") if t.strip()],
+                    ))
+                    kept += 1
 
             result = SourceResult(
                 source=self.source_id,

@@ -611,6 +611,16 @@ llm_routing:
     max_tokens: 4096
     temperature: 0.3
 
+github_topics_by_sector:
+  ai_chips_compute: ["ai-accelerator", "neural-network-hardware", "tensor-processor"]
+  ai_software: ["llm", "transformer", "rag-pipeline"]
+  quantum_frontier: ["quantum-computing", "qiskit"]
+  batteries_storage: ["battery", "energy-storage"]
+  genetic_cell_therapy: ["crispr", "gene-editing"]
+  cybersecurity: ["cybersecurity", "zero-trust"]
+  industrial_robotics: ["robotics", "ros2"]
+  humanoid_robotics: ["humanoid-robot", "legged-robot"]
+
 sector_adjacency:
   ai_chips_compute: [semiconductors_fab, ai_software]
   ai_software: [ai_chips_compute, cybersecurity, quantum_frontier]

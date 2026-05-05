@@ -16,11 +16,16 @@ class USASpendingClient(BaseSourceClient):
     needs_key = False
     rate_limit_per_sec = 2.0
     sector_routed = True
+    emerging_signal = True
 
     def fetch(self, query: SourceQuery) -> SourceResult:
         cached = self._cached(query)
         if cached is not None:
             return cached
+
+        endpoint = query.extra.get("endpoint", "prime_awards")
+        if endpoint == "subawards":
+            return self._fetch_subawards(query)
 
         try:
             lookback = query.lookback_days or 30
@@ -103,5 +108,99 @@ class USASpendingClient(BaseSourceClient):
                 query=query,
                 documents=[],
                 fetched_at=self._utcnow(),
+                errors=[str(exc)],
+            )
+
+    _NON_COMPANY_PATTERNS = (
+        "town of ", "city of ", "county of ", "county,", " county",
+        "state of ", "department of ", "board of ", "government of ",
+        "public school", "school district",
+        "research foundation for the state", "university", "college",
+        "institute of technology", "family & community", "community services",
+        "health services", "social services", "community health", "medical center",
+        "hospital", "church", "diocese",
+    )
+
+    def _is_non_company(self, name: str) -> bool:
+        low = name.lower()
+        return any(p in low for p in self._NON_COMPANY_PATTERNS)
+
+    def _fetch_subawards(self, query: SourceQuery) -> SourceResult:
+        fetched_at = self._utcnow()
+        try:
+            lookback = query.lookback_days or 90
+            today = date.today()
+            d1 = (today - timedelta(days=lookback)).isoformat()
+            keywords = query.extra.get("keywords", [])
+            if not keywords and query.query_string:
+                keywords = [query.query_string]
+            elif not keywords:
+                keywords = ["technology", "artificial intelligence"]
+
+            body: dict[str, Any] = {
+                "filters": {
+                    "keywords": keywords,
+                    "time_period": [{"start_date": d1, "end_date": today.isoformat()}],
+                    "award_type_codes": ["A", "B", "C", "D"],
+                },
+                "page": 1,
+                "limit": min(query.limit, 50),
+                "sort": "amount",
+                "order": "desc",
+            }
+            resp = self._http_post(
+                "https://api.usaspending.gov/api/v2/subawards/",
+                json=body,
+            )
+            data = resp.json()
+            awards = data.get("results", [])
+            docs: list[SourceDocument] = []
+            for award in awards:
+                recipient = (award.get("recipient_name") or award.get("subawardee_name") or "").strip()
+                if not recipient or self._is_non_company(recipient):
+                    continue
+                prime = award.get("prime_award_recipient") or award.get("prime_recipient_name") or ""
+                sub_num = award.get("subaward_number") or award.get("sub_award_number") or ""
+                amount_raw = award.get("amount") or award.get("subaward_amount") or 0
+                try:
+                    amount = float(str(amount_raw).replace(",", "")) if amount_raw else 0.0
+                    if amount > 1e12:  # guard against corrupted API data
+                        amount = 0.0
+                except ValueError:
+                    amount = 0.0
+                description = (award.get("description") or "")[:500]
+                source_id = sub_num or self._content_hash(recipient + str(amount))[:16]
+                url = (
+                    f"https://www.usaspending.gov/award/{sub_num}/"
+                    if sub_num else ""
+                )
+                keyword_ctx = f"Contract keywords: {', '.join(keywords)}. " if keywords else ""
+                docs.append(SourceDocument(
+                    source=self.source_id,
+                    source_id=source_id,
+                    url=url,
+                    content_hash=self._content_hash(source_id),
+                    doc_type="contract",
+                    title=f"Subaward: {recipient} <- {prime} (${amount:,.0f})"[:200],
+                    published_at=None,
+                    fetched_at=fetched_at,
+                    raw_payload=award,
+                    summary=(keyword_ctx + description)[:600],
+                    entities_mentioned=[recipient],
+                ))
+            result = SourceResult(
+                source=self.source_id,
+                query=query,
+                documents=docs,
+                fetched_at=fetched_at,
+            )
+            self._cache(query, result)
+            return result
+        except Exception as exc:
+            return SourceResult(
+                source=self.source_id,
+                query=query,
+                documents=[],
+                fetched_at=fetched_at,
                 errors=[str(exc)],
             )

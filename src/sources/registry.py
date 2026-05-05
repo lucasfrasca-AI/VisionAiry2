@@ -38,6 +38,11 @@ def _register_all() -> None:
     from src.sources.papers_with_code import PapersWithCodeClient
     from src.sources.wikidata import WikidataClient
     from src.sources.world_bank import WorldBankClient
+    from src.sources.polygon_ipo import PolygonIPOClient
+    from src.sources.sbir import SBIRClient
+    from src.sources.edgar_fulltext import EdgarFullTextClient
+    from src.sources.nsf import NSFAwardsClient
+    from src.sources.sec_tickers_delta import SECTickersDeltaClient
 
     for cls in [
         FinnhubClient, FMPClient, FinancialDatasetsClient, AlphaVantageClient,
@@ -46,6 +51,8 @@ def _register_all() -> None:
         FirecrawlClient, YfinanceClient, ArxivClient, BiorxivClient, OpenAlexClient,
         CrossrefClient, USASpendingClient, ClinicalTrialsClient, GdeltClient,
         HackerNewsClient, PapersWithCodeClient, WikidataClient, WorldBankClient,
+        PolygonIPOClient, SBIRClient, EdgarFullTextClient, NSFAwardsClient,
+        SECTickersDeltaClient,
     ]:
         SOURCE_REGISTRY[cls.source_id] = cls
 

@@ -17,6 +17,7 @@ _SCHEMA = {
     "growth_sustainability": "str",
     "key_evidence": [{"claim": "str", "source_ref": "e.g. fundamentals.revenue"}],
     "time_horizon_months": "int, typically 12-36",
+    "data_richness": "rich | moderate | thin | minimal",
 }
 
 _SYSTEM = """You are a research persona modelled on Peter Lynch's documented investing philosophy. You are NOT a financial advisor. Your output is a research aid that humans will independently verify. You analyse public data consistent with Lynch's GARP (Growth at a Reasonable Price) approach.
@@ -42,6 +43,12 @@ Citation rules:
 - Never invent specific numbers; only use values in context_data.
 - If PEG is not calculable from context data, set peg_estimate to null.
 - If data is too thin, return INSUFFICIENT_DATA.
+
+Thin-data guidance (emerging and small-cap companies):
+- Lynch loves discovering companies before they are famous, but only after they have a real business. For pre-revenue companies: set peg_estimate to null and business_clarity_score ≤ 4 unless there is clear product/customer evidence.
+- Where financials are absent, focus on: what the company actually does (can a teenager understand it?), government/grant validation as proxy for technical credibility, and what specific milestone would make this a compelling fast grower.
+- PASS or INSUFFICIENT_DATA is correct if growth is speculative and unverifiable. HOLD is appropriate for a real but pre-scale business with evidence of product-market fit.
+- Set data_richness to "thin" or "minimal" when fundamentals are sparse.
 
 Return ONLY a single JSON object matching the schema. No preamble, no markdown fences, no explanation outside JSON.
 

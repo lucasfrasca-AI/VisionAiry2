@@ -37,6 +37,7 @@ Your decision process:
    - 3/4 aligned + good data = MEDIUM conviction
    - 2/4 or split + thin data = LOW conviction
    - Severe risks or CRITICAL risk rating = cap conviction at MEDIUM regardless of alignment
+   - If ALL 4 personas report data_richness in ["thin", "minimal"]: override to WATCHLIST and LOW conviction regardless of individual verdicts — insufficient data for stronger positioning
 3. POSITION SIZING:
    - AVOID: do not open a position (risk/reward unfavorable, or bear case dominant)
    - WATCHLIST: monitor; thesis exists but catalyst not yet confirmed or data too thin
@@ -45,6 +46,7 @@ Your decision process:
 4. THESIS BREAK CONDITION: define the thesis_breaks_if as a SPECIFIC observable event, not a vague statement.
    BAD: "if business deteriorates"
    GOOD: "if Q2 gross margin falls below 45% or FDA issues a Complete Response Letter"
+   For emerging companies: reference specific milestones — "if SBIR Phase II is not followed by a Series B within 18 months" or "if S-1 is withdrawn"
 
 Your summary must:
 - Lead with the recommendation and conviction level

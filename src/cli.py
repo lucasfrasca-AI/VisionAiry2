@@ -61,6 +61,8 @@ FUZZY_MAP: dict[str, str] = {
     # Financial
     "finnhub": "FINNHUB_API_KEY",
     "finnhub_api_key": "FINNHUB_API_KEY",
+    "polygon": "POLYGON_API_KEY",
+    "polygon_api_key": "POLYGON_API_KEY",
     "fmp": "FMP_API_KEY",
     "financialmodelingprep": "FMP_API_KEY",
     "financial_modeling_prep": "FMP_API_KEY",
@@ -639,11 +641,19 @@ def discover_cmd(
         help="Lookback days for quantitative data."),
     lookback_qual: int = typer.Option(14, "--lookback-qual",
         help="Lookback days for qualitative data."),
-    top_n: int = typer.Option(7, "--top-n", help="Number of top candidates to report."),
+    top_n: int = typer.Option(7, "--top-n", help="Total candidates (split 60/40 by default)."),
     dry_run: bool = typer.Option(False, "--dry-run",
         help="Discover and score candidates without generating full reports."),
+    established_n: Optional[int] = typer.Option(None, "--established-n",
+        help="Override number of established candidates."),
+    emerging_n: Optional[int] = typer.Option(None, "--emerging-n",
+        help="Override number of emerging candidates."),
+    emerging_only: bool = typer.Option(False, "--emerging-only",
+        help="Skip established-company track."),
+    established_only: bool = typer.Option(False, "--established-only",
+        help="Skip emerging-company track."),
 ) -> None:
-    """Mode 1 — autonomous discovery scan across sectors."""
+    """Mode 1 — autonomous discovery scan (established + emerging two-track)."""
     from src.modes.discover import run_discovery
     from src.storage.db import get_session_factory
 
@@ -665,17 +675,39 @@ def discover_cmd(
         dry_run=dry_run,
         db_session_factory=session_factory,
         progress_cb=_progress,
+        established_n=established_n,
+        emerging_n=emerging_n,
+        emerging_only=emerging_only,
+        established_only=established_only,
     )
 
     console.print(f"\n[bold green]Scan complete[/bold green] in {result.get('elapsed_sec', '?')}s")
     console.print(f"Candidates surfaced: [bold]{result.get('n_candidates', 0)}[/bold]")
-    console.print(f"Top {top_n}: [bold]{result.get('top_n_tickers', [])}[/bold]")
+
+    est = result.get("established", [])
+    em = result.get("emerging", [])
+    if est or em:
+        est_table = Table(title="Established Candidates")
+        est_table.add_column("TICKER")
+        for t in est:
+            est_table.add_row(t)
+        console.print(est_table)
+
+        em_table = Table(title="Emerging Candidates")
+        em_table.add_column("TICKER / ENTITY")
+        for t in em:
+            em_table.add_row(t)
+        console.print(em_table)
+    else:
+        console.print(f"Top {top_n}: [bold]{result.get('top_n_tickers', [])}[/bold]")
+
     console.print(f"Total cost: [bold]${result.get('total_cost_usd', 0):.4f}[/bold]")
     if result.get("brief_path"):
         console.print(f"Brief: [cyan]{result['brief_path']}[/cyan]")
     if result.get("candidate_reports"):
         table = Table(title="Candidate Reports")
         table.add_column("TICKER")
+        table.add_column("TRACK")
         table.add_column("RECOMMENDATION")
         table.add_column("CONVICTION")
         table.add_column("COST")
@@ -684,6 +716,7 @@ def discover_cmd(
             rp = cr.get("report_path", "")
             table.add_row(
                 cr.get("ticker", "?"),
+                cr.get("track", "established"),
                 cr.get("recommendation", "N/A"),
                 cr.get("conviction", "N/A"),
                 f"${cr.get('cost_usd', 0):.4f}",

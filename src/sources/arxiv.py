@@ -12,6 +12,40 @@ from src.sources.base import (
 )
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
+ARXIV_NS = "http://arxiv.org/schemas/atom"
+
+_ACADEMIC_AFFIL_PATTERNS = (
+    "university", "college", "institute", "school", "academy",
+)
+
+
+def _extract_affiliations(entry: Any) -> list[str]:
+    """Extract non-academic author affiliations from an Atom entry element."""
+    found: list[str] = []
+    seen: set[str] = set()
+    for author in entry.findall(f"{{{ATOM_NS}}}author"):
+        name_elem = author.find(f"{{{ATOM_NS}}}name")
+        name_text = name_elem.text or "" if name_elem is not None else ""
+
+        # arxiv:affiliation child element
+        affil_elem = author.find(f"{{{ARXIV_NS}}}affiliation")
+        if affil_elem is not None and affil_elem.text:
+            affil = affil_elem.text.strip()
+        elif "," in name_text:
+            # "Jane Smith, Lightmatter Inc" pattern
+            affil = name_text.split(",", 1)[1].strip()
+        else:
+            continue
+
+        if not affil:
+            continue
+        low = affil.lower()
+        if any(p in low for p in _ACADEMIC_AFFIL_PATTERNS):
+            continue
+        if affil not in seen:
+            seen.add(affil)
+            found.append(affil)
+    return found
 
 
 class ArxivClient(BaseSourceClient):
@@ -64,6 +98,8 @@ class ArxivClient(BaseSourceClient):
                     if a.find(f"{{{ATOM_NS}}}name") is not None
                 ]
 
+                affiliations = _extract_affiliations(entry)
+
                 categories = [
                     c.get("term", "")
                     for c in entry.findall("{http://arxiv.org/schemas/atom}primary_category")
@@ -94,8 +130,10 @@ class ArxivClient(BaseSourceClient):
                         "summary": summary[:500],
                         "authors": authors[:5],
                         "categories": categories,
+                        "affiliations": affiliations,
                     },
                     summary=summary[:300],
+                    entities_mentioned=affiliations,
                 ))
 
             result = SourceResult(

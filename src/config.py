@@ -61,6 +61,9 @@ class Secrets(BaseSettings):
     EIA_API_KEY: str = ""
     SAM_GOV_API_KEY: str = ""
 
+    # Financial / market data
+    POLYGON_API_KEY: str = ""
+
     # Tech / macro / search
     GITHUB_TOKEN: str = ""
     FRED_API_KEY: str = ""
@@ -114,6 +117,7 @@ class AppConfig(BaseModel):
     discovery: DiscoveryConfig
     llm_routing: dict[str, RoleRouting]
     sector_adjacency: dict[str, list[str]] = Field(default_factory=dict)
+    github_topics_by_sector: dict[str, list[str]] = Field(default_factory=dict)
 
     def role(self, name: str) -> RoleRouting:
         if name not in self.llm_routing:
@@ -145,6 +149,7 @@ def get_config() -> AppConfig:
         discovery=DiscoveryConfig(**raw["discovery"]),
         llm_routing={k: RoleRouting(**v) for k, v in raw["llm_routing"].items()},
         sector_adjacency=raw.get("sector_adjacency", {}),
+        github_topics_by_sector=raw.get("github_topics_by_sector", {}),
     )
 
 
