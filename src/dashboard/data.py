@@ -14,6 +14,7 @@ _REPORTS_ROOT = _ROOT / "reports"
 _PRE_IPO_ROOT = _REPORTS_ROOT / "_emerging_pre_ipo_"
 _DIGEST_ROOT = _ROOT / "digest"
 _KEY_STATUS_PATH = _ROOT / "data" / ".key_status.json"
+_ANALYSE_HISTORY_PATH = _ROOT / "data" / ".analyse_history.json"
 
 _REAL_TICKER_RE = re.compile(r"^[A-Z]{1,5}(\.[A-Z]+)?$")
 _SLUG_RE = re.compile(r"^[a-z0-9-]{1,60}$")
@@ -603,6 +604,39 @@ def _extract_price_from_report(ticker: str, generated_at) -> float | None:
         return float(price) if price else None
     except Exception:
         return None
+
+
+# ── Analyse history ───────────────────────────────────────────────────────────
+
+def list_analyse_history(limit: int = 5) -> list[dict]:
+    """Return up to `limit` recent on-demand analysis submissions."""
+    try:
+        raw = json.loads(_ANALYSE_HISTORY_PATH.read_text())
+    except Exception:
+        return []
+    result = []
+    for entry in raw[:limit]:
+        ticker = entry.get("ticker", "")
+        started_at = entry.get("started_at", "")
+        report_ts = None
+        if ticker and started_at and _REPORTS_ROOT.exists():
+            ticker_dir = _REPORTS_ROOT / ticker
+            if ticker_dir.exists():
+                for ts_dir in sorted(ticker_dir.iterdir(), reverse=True):
+                    if ts_dir.is_dir() and ts_dir.name >= started_at:
+                        if (ts_dir / "report.md").exists() and (ts_dir / "data.json").exists():
+                            report_ts = ts_dir.name
+                            break
+        result.append({
+            "ticker": ticker,
+            "depth": entry.get("depth", "full"),
+            "sector_id": entry.get("sector_id", ""),
+            "started_at": started_at,
+            "started_display": _ts_to_display(started_at) if started_at else "",
+            "report_ts": report_ts,
+            "done": report_ts is not None,
+        })
+    return result
 
 
 # ── Cost sparkline ────────────────────────────────────────────────────────────

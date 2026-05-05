@@ -1,6 +1,7 @@
 """All VisionAiry2 dashboard routes."""
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -251,6 +252,9 @@ def _sector_ids() -> list[str]:
         return []
 
 
+_ANALYSE_HISTORY_PATH = _ROOT / "data" / ".analyse_history.json"
+
+
 @app.get("/analyse", response_class=HTMLResponse)
 async def analyse_form(request: Request):
     return templates.TemplateResponse(request, "analyse_form.html", context={
@@ -258,6 +262,7 @@ async def analyse_form(request: Request):
         "sectors": _sector_ids(),
         "error": None,
         "submitted_ticker": None,
+        "analyse_history": _data.list_analyse_history(5),
         **_nav_counts(),
     })
 
@@ -305,7 +310,7 @@ async def analyse_submit(
     now_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     today_prefix = now_ts[:8]  # e.g. "20260505"
 
-    # Spawn background subprocess (non-blocking)
+    # Spawn background subprocess (non-blocking, fully detached)
     import shutil
     log_path = Path("/tmp") / f"visionairy2_analyse_{ticker}_{now_ts}.log"
     uv_path = shutil.which("uv")
@@ -321,13 +326,24 @@ async def analyse_submit(
                     f"import sys; sys.path.insert(0,{root_str!r}); from src.cli import app; "
                     f"sys.argv=['visionairy2','analyse-ticker',{ticker!r},'--depth',{depth!r},'--sector',{sector_id!r}]; app()",
                 ]
-            subprocess.Popen(cmd, stdout=log_file, stderr=log_file, cwd=str(_ROOT))
+            subprocess.Popen(
+                cmd, stdout=log_file, stderr=log_file,
+                cwd=str(_ROOT), start_new_session=True,
+            )
+        # Persist to history so the form page can show recent runs
+        try:
+            existing = json.loads(_ANALYSE_HISTORY_PATH.read_text()) if _ANALYSE_HISTORY_PATH.exists() else []
+            existing.insert(0, {"ticker": ticker, "depth": depth, "sector_id": sector_id, "started_at": now_ts})
+            _ANALYSE_HISTORY_PATH.write_text(json.dumps(existing[:20], indent=2))
+        except Exception:
+            pass
     except Exception as exc:
         return templates.TemplateResponse(request, "analyse_form.html", context={
             "active_page": "analyse",
             "sectors": _sector_ids(),
             "error": f"Failed to start analysis process: {exc}",
             "submitted_ticker": ticker,
+            "analyse_history": _data.list_analyse_history(5),
             **_nav_counts(),
         })
 
@@ -380,12 +396,35 @@ async def analyse_status(
         "depth": depth,
         "sector_id": sector_id or "auto",
         "started_at": started_display,
+        "started_raw": started,
+        "today": today,
         "expected_ts": today + "T*",
         "done": found_ts is not None,
         "timestamp": found_ts or "",
         "error": None,
         **_nav_counts(),
     })
+
+
+@app.get("/analyse/check/{ticker}")
+async def analyse_check(
+    ticker: str,
+    today: str = "",
+):
+    """Lightweight JSON endpoint polled by the status page JS every 5s."""
+    if not _TICKER_RE.match(ticker):
+        return JSONResponse({"done": False, "timestamp": None})
+    ticker_dir = _REPORTS_ROOT / ticker
+    if ticker_dir.exists():
+        for ts_dir in sorted(ticker_dir.iterdir(), reverse=True):
+            if not ts_dir.is_dir():
+                continue
+            ts_name = ts_dir.name
+            if today and not ts_name.startswith(today):
+                continue
+            if (ts_dir / "report.md").exists() and (ts_dir / "data.json").exists():
+                return JSONResponse({"done": True, "timestamp": ts_name})
+    return JSONResponse({"done": False, "timestamp": None})
 
 
 # ── Watchlist ─────────────────────────────────────────────────────────────────

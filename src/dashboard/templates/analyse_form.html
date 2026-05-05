@@ -6,8 +6,8 @@
 <div class="space-y-6 max-w-2xl">
 
   <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-    <h1 class="text-xl font-bold text-slate-900 mb-1">On-Demand Analysis</h1>
-    <p class="text-sm text-slate-500 mb-5">Generate a full research report for any ticker, regardless of watchlist or discovery scans.</p>
+    <h1 class="text-xl font-bold text-slate-900 mb-1">Analyse any ticker on demand</h1>
+    <p class="text-sm text-slate-500 mb-5">Generates a full multi-persona report in 2–3 minutes for ~$0.15 — no discovery scan required.</p>
 
     {% if error %}
     <div class="mb-4 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
@@ -21,7 +21,7 @@
           <label class="block text-sm font-medium text-slate-700 mb-1">Ticker symbol <span class="text-slate-400">(e.g. TSLA, NVDA, AAPL)</span></label>
           <input type="text" name="ticker" placeholder="TSLA"
             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            pattern="[A-Z]{1,5}(\.[A-Z]+)?" title="1-5 uppercase letters, optional .EXCHANGE suffix"
+            pattern="[A-Za-z]{1,5}(\.[A-Za-z]+)?" title="1-5 letters, optional .EXCHANGE suffix"
             required autocomplete="off" autocapitalize="characters" value="{{ submitted_ticker or '' }}">
         </div>
 
@@ -67,6 +67,33 @@
     <p><strong>CLI equivalent:</strong> <code class="bg-white border border-slate-200 rounded px-1.5 py-0.5 font-mono text-slate-700">uv run visionairy2 analyse-ticker TSLA --depth lite</code></p>
     <p>Reports appear in <code class="font-mono">reports/&lt;TICKER&gt;/&lt;timestamp&gt;/</code> and are immediately visible in <a href="/reports" class="text-indigo-600 hover:text-indigo-800">Reports</a>.</p>
   </div>
+
+  {% if analyse_history %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <h2 class="text-sm font-semibold text-slate-700 mb-3">Recent Analyses</h2>
+    <div class="divide-y divide-slate-100">
+      {% for h in analyse_history %}
+      <div class="flex items-center justify-between py-2 text-sm">
+        <div class="flex items-center gap-2">
+          <span class="font-mono font-bold text-indigo-700">{{ h.ticker }}</span>
+          <span class="text-xs text-slate-400">{{ h.depth }}</span>
+          {% if h.sector_id %}<span class="text-xs text-slate-400">· {{ h.sector_id }}</span>{% endif %}
+        </div>
+        <div class="flex items-center gap-3 text-xs">
+          <span class="text-slate-400">{{ h.started_display }}</span>
+          {% if h.done %}
+            <span class="text-emerald-600 font-medium">✓ done</span>
+            <a href="/reports/{{ h.ticker }}/{{ h.report_ts }}" class="text-indigo-600 hover:text-indigo-800 font-medium">View →</a>
+          {% else %}
+            <span class="text-amber-600">running…</span>
+            <a href="/analyse/status/{{ h.ticker }}?depth={{ h.depth }}&sector_id={{ h.sector_id }}&started={{ h.started_at }}&today={{ h.started_at[:8] }}" class="text-indigo-600 hover:text-indigo-800 font-medium">Check →</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
 </div>
 {% endblock %}

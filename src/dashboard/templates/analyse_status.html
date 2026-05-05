@@ -2,16 +2,10 @@
 
 {% block title %}Analysing {{ ticker }} — VisionAiry2{% endblock %}
 
-{% block auto_refresh %}
-{% if not done %}
-<meta http-equiv="refresh" content="8">
-{% endif %}
-{% endblock %}
-
 {% block content %}
 <div class="space-y-6 max-w-2xl">
 
-  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6" id="status-panel">
     {% if done %}
       <div class="flex items-center gap-3 mb-4">
         <span class="text-emerald-500 text-2xl">✓</span>
@@ -33,17 +27,13 @@
       <a href="/analyse" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">← Try again</a>
     {% else %}
       <div class="flex items-center gap-3 mb-4">
-        <div class="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <div class="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
         <h1 class="text-xl font-bold text-slate-900">Analysing {{ ticker }}…</h1>
       </div>
-      <p class="text-sm text-slate-600 mb-1">
-        {% if depth == 'lite' %}
-        Estimated time: 30–90 seconds (lite mode).
-        {% else %}
-        Estimated time: 2–3 minutes (full mode, 4 personas).
-        {% endif %}
+      <p class="text-sm text-slate-600 mb-0.5" id="countdown-line">
+        {% if depth == 'lite' %}~1 min remaining for lite depth{% else %}~2 min remaining for full depth{% endif %}
       </p>
-      <p class="text-xs text-slate-400 mb-4">This page auto-refreshes every 8 seconds.</p>
+      <p class="text-xs text-slate-400 mb-4">Checking every 5 seconds.</p>
       <div class="bg-slate-50 rounded-lg p-4 text-xs font-mono text-slate-500 space-y-1">
         <div>Ticker: <strong class="text-slate-700">{{ ticker }}</strong></div>
         <div>Depth: <strong class="text-slate-700">{{ depth }}</strong></div>
@@ -60,10 +50,70 @@
 {% block scripts %}
 {% if done %}
 <script>
-// Auto-redirect after 1 second
 setTimeout(function() {
   window.location.href = '/reports/{{ ticker }}/{{ timestamp }}';
 }, 1000);
+</script>
+{% elif not error %}
+<script>
+(function() {
+  var ticker = {{ ticker | tojson }};
+  var depth = {{ depth | tojson }};
+  var today = {{ today | tojson }};
+  var startedRaw = {{ started_raw | tojson }};
+  var estimatedSecs = depth === 'lite' ? 75 : 165;
+  var TIMEOUT_SECS = 300;
+  var POLL_INTERVAL = 5;
+  var elapsed = 0;
+
+  function fmtCountdown(secs) {
+    var m = Math.floor(secs / 60);
+    var s = secs % 60;
+    if (m > 0) return '~' + m + 'm ' + s + 's remaining';
+    return '~' + s + 's remaining';
+  }
+
+  var pollTimer = setInterval(async function() {
+    elapsed += POLL_INTERVAL;
+
+    // Update countdown
+    var countdownEl = document.getElementById('countdown-line');
+    if (countdownEl) {
+      var remaining = Math.max(0, estimatedSecs - elapsed);
+      countdownEl.textContent = remaining > 0 ? fmtCountdown(remaining) : 'Completing…';
+    }
+
+    // 5-minute timeout → show error state
+    if (elapsed >= TIMEOUT_SECS) {
+      clearInterval(pollTimer);
+      var logPath = '/tmp/visionairy2_analyse_' + ticker + '_' + startedRaw + '.log';
+      document.getElementById('status-panel').innerHTML =
+        '<div class="flex items-center gap-3 mb-4">' +
+        '<span class="text-rose-500 text-2xl">✗</span>' +
+        '<h1 class="text-xl font-bold text-slate-900">Analysis timed out — ' + ticker + '</h1>' +
+        '</div>' +
+        '<p class="text-sm text-slate-600 mb-2">No report appeared after 5 minutes.</p>' +
+        '<p class="text-xs text-slate-500 font-mono mb-4">Log: ' + logPath + '</p>' +
+        '<a href="/analyse" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">← Try again</a>';
+      return;
+    }
+
+    // Poll check endpoint
+    try {
+      var url = '/analyse/check/' + ticker + (today ? '?today=' + today : '');
+      var resp = await fetch(url);
+      if (resp.ok) {
+        var data = await resp.json();
+        if (data.done && data.timestamp) {
+          clearInterval(pollTimer);
+          window.location.href = '/reports/' + ticker + '/' + data.timestamp;
+        }
+      }
+    } catch (e) {
+      // server may be restarting — silently retry next interval
+    }
+  }, POLL_INTERVAL * 1000);
+})();
 </script>
 {% endif %}
 {% endblock %}
