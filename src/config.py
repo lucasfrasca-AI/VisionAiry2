@@ -113,6 +113,7 @@ class AppConfig(BaseModel):
     watchlist: dict[str, list[WatchlistEntry]]
     discovery: DiscoveryConfig
     llm_routing: dict[str, RoleRouting]
+    sector_adjacency: dict[str, list[str]] = Field(default_factory=dict)
 
     def role(self, name: str) -> RoleRouting:
         if name not in self.llm_routing:
@@ -143,6 +144,7 @@ def get_config() -> AppConfig:
         },
         discovery=DiscoveryConfig(**raw["discovery"]),
         llm_routing={k: RoleRouting(**v) for k, v in raw["llm_routing"].items()},
+        sector_adjacency=raw.get("sector_adjacency", {}),
     )
 
 

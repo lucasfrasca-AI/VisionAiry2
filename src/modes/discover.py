@@ -52,7 +52,42 @@ def run_discovery(
     scored: list[tuple[str, float]] = []
     all_docs_rebuilt = _rebuild_docs(scan_ctx["all_documents"])
 
+    # Stage A: hard sector gate — filter before scoring
+    doc_id_index: dict[str, Any] = {d.source_id: d for d in all_docs_rebuilt}
+    filter_candidates = [
+        {"ticker": t, "docs": [doc_id_index[did] for did in doc_ids if did in doc_id_index]}
+        for t, doc_ids in mentions.items()
+    ]
+    sector_adjacency = getattr(cfg, "sector_adjacency", {})
+    filtered_candidates = scorer.filter_to_sector(filter_candidates, sectors, sector_adjacency, cfg)
+    n_active = sum(1 for c in filtered_candidates if c.get("sector_status") == "active")
+    n_adjacent = sum(1 for c in filtered_candidates if c.get("sector_status") == "adjacent")
+    n_dropped = len(filter_candidates) - len(filtered_candidates)
+    _emit(f"[discover] Sector filter: {n_active} active, {n_adjacent} adjacent, {n_dropped} dropped (off-sector)")
+
+    if not filtered_candidates:
+        _emit(
+            f"[discover] WARNING: No in-sector candidates found for sectors={sectors}. "
+            "Either broaden to adjacent sectors or revisit source coverage."
+        )
+        scan_id_empty = f"scan_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        brief_path_empty = _generate_brief([], sectors, scan_ctx, db_session_factory, llm_client)
+        return {
+            "scan_id": scan_id_empty,
+            "dry_run": dry_run,
+            "n_candidates": 0,
+            "top_n_tickers": [],
+            "candidate_reports": [],
+            "total_cost_usd": 0.0,
+            "brief_path": brief_path_empty,
+            "elapsed_sec": round(time.time() - t_start, 1),
+        }
+
+    allowed_tickers = {c["ticker"] for c in filtered_candidates}
+
     for ticker, doc_ids in mentions.items():
+        if ticker not in allowed_tickers:
+            continue
         sector_id = _guess_sector(ticker, sectors, cfg)
         try:
             relevant_docs = [

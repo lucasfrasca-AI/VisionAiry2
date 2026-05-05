@@ -95,8 +95,8 @@ class TestFinnhubClient:
         monkeypatch.setattr("src.sources.base.RAW_DIR", tmp_path / "raw")
         c = self._client()
         mock_resp = make_mock_response([
-            {"id": 99, "headline": "AI Chip News", "summary": "Test summary",
-             "url": "http://example.com", "datetime": 1700000000, "source": "Reuters"}
+            {"id": 99, "headline": "NVDA earnings beat analyst estimates", "summary": "Test summary",
+             "url": "https://www.bloomberg.com/news/nvda-earnings", "datetime": 1700000000, "source": "Bloomberg"}
         ])
         with patch.object(c, "_http_get", return_value=mock_resp):
             result = c.fetch(SourceQuery(ticker="NVDA"))
@@ -104,7 +104,7 @@ class TestFinnhubClient:
         assert result.source == "finnhub"
         assert len(result.documents) >= 1
         assert result.documents[0].doc_type == "news"
-        assert result.documents[0].title == "AI Chip News"
+        assert result.documents[0].title == "NVDA earnings beat analyst estimates"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

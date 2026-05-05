@@ -4,6 +4,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+_OFF_SECTOR_GICS = frozenset({
+    "communication services",
+    "financial services",
+    "consumer cyclical",
+    "consumer staples",
+    "consumer defensive",
+    "real estate",
+    "utilities",
+})
+
 REPORT_SECTIONS = [
     "executive_summary",
     "quantitative_snapshot",
@@ -72,7 +82,11 @@ def render_draft(
             items.append(f"- {date} — {link} _(via {src})_")
         return "\n".join(items)
 
-    def _source_list(news: list, filings: list, papers: list) -> str:
+    def _source_list(
+        news: list, filings: list, papers: list,
+        ticker: str = "", company_name: str = "",
+    ) -> tuple[str, int]:
+        """Returns (rendered_source_list, n_dropped_papers)."""
         items = []
         idx = 1
         for n in (news or [])[:10]:
@@ -86,16 +100,50 @@ def render_draft(
             title = f.get("title", "SEC Filing")
             items.append(f"{idx}. [{title}]({url}) — SEC EDGAR")
             idx += 1
-        for p in (papers or [])[:3]:
+        ticker_lower = ticker.lower()
+        company_lower = company_name.lower() if company_name else ""
+        dropped = 0
+        for p in (papers or [])[:10]:
             url = p.get("url", "")
             title = p.get("title", "Research Paper")
-            items.append(f"{idx}. [{title}]({url}) — arXiv/OpenAlex")
-            idx += 1
-        return "\n".join(items) if items else "_No sources available._"
+            title_lower = title.lower()
+            summary_lower = (p.get("summary") or "").lower()
+            relevant = (
+                (ticker_lower and (ticker_lower in title_lower or ticker_lower in summary_lower))
+                or (company_lower and (company_lower in title_lower or company_lower in summary_lower))
+            )
+            if relevant:
+                items.append(f"{idx}. [{title}]({url}) — arXiv/OpenAlex")
+                idx += 1
+            else:
+                dropped += 1
+        return ("\n".join(items) if items else "_No sources available._"), dropped
 
     fundamentals = context.get("fundamentals", {})
     price_data = context.get("price", {})
     completeness = context.get("data_completeness", {})
+
+    # Pre-compute source list with paper filter
+    sources_str, dropped_papers = _source_list(
+        context.get("news_recent", []),
+        context.get("filings_recent", []),
+        context.get("research_papers", []),
+        ticker=ticker,
+        company_name=company_name,
+    )
+
+    # Sector mismatch banner
+    company_sector_raw = (
+        fundamentals.get("Sector") or fundamentals.get("sector") or
+        fundamentals.get("SectorName") or fundamentals.get("sectorName") or ""
+    )
+    sector_mismatch_banner = ""
+    if company_sector_raw and sector_id and company_sector_raw.lower() in _OFF_SECTOR_GICS:
+        sector_mismatch_banner = (
+            f"\n> **⚠ Sector mismatch:** Scan requested `{sector_id}`, "
+            f"candidate primary sector is `{company_sector_raw}`. "
+            "Surfaced as adjacent or via document-volume signal — not a core in-sector finding.\n"
+        )
 
     fund_lines = []
     for k, v in list(fundamentals.items())[:12]:
@@ -132,7 +180,7 @@ def render_draft(
 **Generated:** {generated_at}
 **Sector:** {sector_id}
 **Recommendation:** {pm_verdict} | **Conviction:** {pm_conviction}
-
+{sector_mismatch_banner}
 > *This is a research aid, not financial advice. All claims require independent verification. Free-tier data sources may be incomplete or delayed.*
 
 ---
@@ -254,7 +302,7 @@ def render_draft(
 
 ## 9. Sources Used
 
-{_source_list(context.get('news_recent', []), context.get('filings_recent', []), context.get('research_papers', []))}
+{sources_str}
 
 ---
 
@@ -263,6 +311,8 @@ def render_draft(
 {chr(10).join(f'- **{k}**: {v}' for k, v in completeness.items() if 'unavailable' in str(v) or 'error' in str(v) or 'empty' in str(v)) or '_All configured sources returned data._'}
 
 Missing or failed sources: {', '.join(missing_sources) if missing_sources else 'none'}
+
+{f'_{dropped_papers} sector-context research paper(s) excluded from this source list as not directly relevant to {ticker}._' if dropped_papers else ''}
 """
 
     return report

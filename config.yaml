@@ -610,3 +610,23 @@ llm_routing:
     fallback_model: deepseek-reasoner
     max_tokens: 4096
     temperature: 0.3
+
+sector_adjacency:
+  ai_chips_compute: [semiconductors_fab, ai_software]
+  ai_software: [ai_chips_compute, cybersecurity, quantum_frontier]
+  semiconductors_fab: [ai_chips_compute, advanced_materials]
+  batteries_storage: [critical_minerals, advanced_materials]
+  pharma_glp1: [genetic_cell_therapy, medtech_diagnostics]
+  genetic_cell_therapy: [pharma_glp1, medtech_diagnostics]
+  traditional_defence: [emerging_defence, space_satellites]
+  emerging_defence: [traditional_defence, ai_software, industrial_robotics]
+  cybersecurity: [ai_software, quantum_frontier]
+  quantum_frontier: [ai_chips_compute, ai_software]
+  space_satellites: [traditional_defence, emerging_defence]
+  humanoid_robotics: [industrial_robotics, ai_software]
+  industrial_robotics: [humanoid_robotics, ai_chips_compute]
+  nuclear_fusion: [oil_gas_traditional, advanced_materials]
+  critical_minerals: [batteries_storage, advanced_materials]
+  oil_gas_traditional: [nuclear_fusion, critical_minerals]
+  medtech_diagnostics: [pharma_glp1, genetic_cell_therapy]
+  advanced_materials: [semiconductors_fab, batteries_storage, critical_minerals]

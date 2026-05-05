@@ -32,7 +32,7 @@ class NewsdataClient(BaseSourceClient):
             "apikey": key,
             "q": q,
             "language": "en",
-            "size": min(query.limit, 50),
+            "size": min(query.limit, 10),
         }
 
         try:

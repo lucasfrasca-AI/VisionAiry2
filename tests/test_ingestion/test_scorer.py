@@ -7,6 +7,24 @@ from src.sources.base import SourceDocument
 from src.ingestion.scorer import InterestingnessScorer
 
 
+def _sector_mock(sector_ids: list[str], sector_keywords: dict[str, list[str]] | None = None):
+    """Build a minimal config mock with watchlist and sectors."""
+    cfg = MagicMock()
+    cfg.watchlist = {
+        "ai_chips_compute": [MagicMock(ticker="NVDA"), MagicMock(ticker="AMD")],
+        "ai_software": [MagicMock(ticker="MSFT"), MagicMock(ticker="GOOGL")],
+        "cybersecurity": [MagicMock(ticker="CRWD")],
+    }
+    s_list = []
+    for sid in sector_ids:
+        s = MagicMock()
+        s.id = sid
+        s.keywords = (sector_keywords or {}).get(sid, ["GPU", "AI accelerator", "inference chip"])
+        s_list.append(s)
+    cfg.sectors = s_list
+    return cfg
+
+
 def _doc(source="edgar", doc_type="news", days_ago=1):
     return SourceDocument(
         source=source, source_id="d1", url="http://example.com",
@@ -153,3 +171,90 @@ class TestInterestingnessScorer:
         result = scorer.score_company("c1", [(_doc(), 1.0)], config)
         # Check that score matches its own rounded value to 3dp
         assert result["score"] == round(result["score"], 3)
+
+
+class TestFilterToSector:
+    _ADJ = {
+        "ai_chips_compute": ["semiconductors_fab", "ai_software"],
+        "ai_software": ["ai_chips_compute", "cybersecurity"],
+    }
+
+    def test_keeps_active_watchlist_ticker(self):
+        scorer = InterestingnessScorer()
+        cfg = _sector_mock(["ai_chips_compute"])
+        candidates = [{"ticker": "NVDA", "docs": []}]
+        result = scorer.filter_to_sector(candidates, ["ai_chips_compute"], self._ADJ, cfg)
+        assert len(result) == 1
+        assert result[0]["sector_status"] == "active"
+
+    def test_drops_off_sector_watchlist_ticker(self):
+        scorer = InterestingnessScorer()
+        cfg = _sector_mock(["ai_chips_compute"])
+        # CRWD is in cybersecurity which is NOT adjacent to ai_chips_compute in this test map
+        adj = {"ai_chips_compute": ["semiconductors_fab"]}
+        candidates = [{"ticker": "CRWD", "docs": []}]
+        result = scorer.filter_to_sector(candidates, ["ai_chips_compute"], adj, cfg)
+        assert result == []
+
+    def test_keeps_adjacent_watchlist_ticker(self):
+        scorer = InterestingnessScorer()
+        cfg = _sector_mock(["ai_chips_compute"])
+        # MSFT is ai_software which is adjacent to ai_chips_compute
+        candidates = [{"ticker": "MSFT", "docs": []}]
+        result = scorer.filter_to_sector(candidates, ["ai_chips_compute"], self._ADJ, cfg)
+        assert len(result) == 1
+        assert result[0]["sector_status"] == "adjacent"
+
+    def test_unresolved_ticker_dropped_without_keyword_match(self):
+        scorer = InterestingnessScorer()
+        cfg = _sector_mock(["ai_chips_compute"], {"ai_chips_compute": ["GPU", "AI accelerator"]})
+        off_topic = SourceDocument(
+            source="finnhub", source_id="n1", url="", content_hash="x",
+            doc_type="news", title="Political rally coverage",
+            published_at=None, fetched_at=datetime.now(timezone.utc),
+            raw_payload={}, summary="Political event unrelated to chips",
+        )
+        candidates = [{"ticker": "DJT", "docs": [off_topic, off_topic]}]
+        result = scorer.filter_to_sector(candidates, ["ai_chips_compute"], self._ADJ, cfg)
+        assert result == []
+
+    def test_unresolved_ticker_kept_with_3_keyword_matches(self):
+        scorer = InterestingnessScorer()
+        cfg = _sector_mock(["ai_chips_compute"], {"ai_chips_compute": ["GPU", "AI accelerator"]})
+        matching_doc = SourceDocument(
+            source="arxiv", source_id="p1", url="", content_hash="x",
+            doc_type="paper", title="New GPU inference chip architecture",
+            published_at=None, fetched_at=datetime.now(timezone.utc),
+            raw_payload={}, summary="AI accelerator for GPU workloads",
+        )
+        candidates = [{"ticker": "NEWCO", "docs": [matching_doc, matching_doc, matching_doc]}]
+        result = scorer.filter_to_sector(candidates, ["ai_chips_compute"], self._ADJ, cfg)
+        assert len(result) == 1
+        assert result[0]["sector_status"] == "unresolved_kept"
+
+    def test_empty_candidates_returns_empty(self):
+        scorer = InterestingnessScorer()
+        cfg = _sector_mock(["ai_chips_compute"])
+        result = scorer.filter_to_sector([], ["ai_chips_compute"], self._ADJ, cfg)
+        assert result == []
+
+    def test_all_off_sector_returns_empty(self):
+        scorer = InterestingnessScorer()
+        cfg = _sector_mock(["ai_chips_compute"])
+        # CRWD is cybersecurity which is NOT in ai_chips_compute adjacency here
+        adj = {"ai_chips_compute": []}
+        candidates = [
+            {"ticker": "CRWD", "docs": []},
+            {"ticker": "DJT", "docs": []},
+        ]
+        result = scorer.filter_to_sector(candidates, ["ai_chips_compute"], adj, cfg)
+        assert result == []
+
+    def test_original_candidate_dict_not_mutated(self):
+        scorer = InterestingnessScorer()
+        cfg = _sector_mock(["ai_chips_compute"])
+        original = {"ticker": "NVDA", "docs": []}
+        candidates = [original]
+        scorer.filter_to_sector(candidates, ["ai_chips_compute"], self._ADJ, cfg)
+        # Original dict should be unchanged (filter returns new dicts)
+        assert "sector_status" not in original

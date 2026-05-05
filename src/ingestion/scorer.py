@@ -106,6 +106,76 @@ class InterestingnessScorer:
             },
         }
 
+    def filter_to_sector(
+        self,
+        candidates: list[dict],
+        active_sectors: list[str],
+        adjacency_map: dict[str, list[str]],
+        config: Any,
+    ) -> list[dict]:
+        """Stage-A hard sector gate. Returns only candidates in active or adjacent sectors.
+
+        Each candidate dict must have 'ticker'; optionally 'docs' (list of SourceDocument).
+        Adds 'sector_status': 'active' | 'adjacent' | 'unresolved_kept' to kept candidates.
+        Drops candidates whose resolved sector is off-sector and unresolved candidates with
+        fewer than 3 keyword-matching documents.
+        """
+        # Build ticker -> watchlist sector from config
+        watchlist_sector: dict[str, str] = {}
+        if config and hasattr(config, "watchlist"):
+            for sid, entries in (config.watchlist or {}).items():
+                for entry in entries:
+                    if hasattr(entry, "ticker"):
+                        t = entry.ticker
+                    elif isinstance(entry, dict):
+                        t = entry.get("ticker", "")
+                    else:
+                        t = ""
+                    if t:
+                        watchlist_sector[t] = sid
+
+        # All sectors reachable from any active sector via one hop
+        all_adjacent: set[str] = set()
+        for active in active_sectors:
+            for adj in adjacency_map.get(active, []):
+                all_adjacent.add(adj)
+
+        # Keywords for active sectors (used to qualify unresolved tickers)
+        active_keywords: list[str] = []
+        if config and hasattr(config, "sectors"):
+            for s in config.sectors:
+                if s.id in active_sectors:
+                    active_keywords.extend(kw.lower() for kw in s.keywords)
+
+        kept: list[dict] = []
+        for candidate in candidates:
+            ticker = candidate.get("ticker", "")
+            docs = candidate.get("docs", [])
+            sector_id = watchlist_sector.get(ticker)
+
+            if sector_id is not None:
+                if sector_id in active_sectors:
+                    kept.append({**candidate, "sector_status": "active"})
+                elif sector_id in all_adjacent:
+                    kept.append({**candidate, "sector_status": "adjacent"})
+                # else: resolved but off-sector → drop
+            else:
+                # Unresolved: keep only if ≥3 docs match active sector keywords
+                if not active_keywords:
+                    continue
+                matching = sum(
+                    1 for d in docs
+                    if any(
+                        kw in (d.title or "").lower() or kw in (d.summary or "").lower()
+                        for kw in active_keywords
+                    )
+                )
+                if matching >= 3:
+                    kept.append({**candidate, "sector_status": "unresolved_kept"})
+                # else: drop
+
+        return kept
+
     def rank_companies(self, scores: list[dict]) -> list[dict]:
         return sorted(scores, key=lambda x: x["score"], reverse=True)
 
