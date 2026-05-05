@@ -7,9 +7,9 @@ structured Markdown reports via multi-persona LLM analysis. API-only (no local M
 
 ## 2. Build state
 - Session 1 — Foundation (config, storage, LLM client, CLI, key setup). **Complete.**
-- Session 2 — Source clients (15+). **Pending.**
-- Session 3 — Persona agents, Mode 1 discovery, Mode 3 doc analysis, report writer. **Pending.**
-- Session 4 — FastAPI dashboard + tuning. **Pending.**
+- Session 2 — Source clients (27+). **Complete.**
+- Session 3 — Persona agents, Mode 1 discovery, Mode 3 doc analysis, report writer. **Complete.**
+- Session 4 — FastAPI dashboard + tuning. **Complete.**
 
 ## 3. Disclaimer
 > VisionAiry2 produces research aids, not financial or investment advice.
@@ -94,14 +94,22 @@ visionairy2 ping            # exercises every llm_routing role
 12. If a key fails validation, swap it out of `llm_routing` primary roles and log the change.
 
 ## 9. Session roadmap
-- **Session 1** — Foundation (this session).
-- **Session 2** — 15+ source clients.
-- **Session 3** — Persona agents + Mode 1 + Mode 3 + report writer.
-- **Session 4** — FastAPI dashboard + tuning.
+- **Session 1** — Foundation. ✅
+- **Session 2** — 27+ source clients. ✅
+- **Session 3** — Persona agents + Mode 1 + Mode 3 + report writer. ✅
+- **Session 4** — FastAPI dashboard + tuning. ✅ **v0 shipped.**
 - **v0.5** — Mode 2 deep research; Buffett/Munger personas.
 - **v1** — Discord bot, scheduled cron, Postgres+pgvector.
 
-## 10. Working with reference repos
+## 10. Daily operating loop
+
+1. **Morning**: Open `http://localhost:8000` (`./scripts/run_dashboard.sh`), read overnight discovery brief on home page.
+2. **Mid-morning**: Run new discovery scans for sectors of interest from CLI: `visionairy2 discover --sectors <id> --top-n 5`.
+3. **Check Emerging tab** (`/reports/emerging`) for new pre-IPO candidates that surfaced.
+4. **As needed**: Analyse specific documents with `visionairy2 analyse-doc <url>`.
+5. **Evening**: Review reports, note interesting tickers for follow-up (dashboard is read-only — note-taking is a v0.5 feature).
+
+## 12. Working with reference repos
 - `vendor/ai-hedge-fund/` — Study persona prompt design (Wood, Druckenmiller, Burry, Lynch,
   Buffett). When writing `src/agents/personas/*.py` in Session 3, read theirs as inspiration but
   write our own.

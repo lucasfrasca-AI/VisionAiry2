@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "_macros.html" import recommendation_badge, track_badge %}
+
+{% block title %}Reports — VisionAiry2{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-bold text-slate-900">All Reports <span class="text-slate-400 text-base font-normal">({{ total }})</span></h1>
+  </div>
+
+  <!-- Filters -->
+  <form method="get" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap gap-3 items-end">
+    <div>
+      <label class="block text-xs font-medium text-slate-600 mb-1">Track</label>
+      <select name="track" class="text-sm border border-slate-300 rounded px-2 py-1.5 bg-white">
+        <option value="" {% if not filter_track %}selected{% endif %}>All</option>
+        <option value="established" {% if filter_track == 'established' %}selected{% endif %}>Established</option>
+        <option value="emerging_pre_ipo" {% if filter_track == 'emerging_pre_ipo' %}selected{% endif %}>Pre-IPO</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-slate-600 mb-1">Sector</label>
+      <select name="sector" class="text-sm border border-slate-300 rounded px-2 py-1.5 bg-white">
+        <option value="">All sectors</option>
+        {% for s in sectors %}
+        <option value="{{ s }}" {% if filter_sector == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-slate-600 mb-1">Recommendation</label>
+      <select name="rec" class="text-sm border border-slate-300 rounded px-2 py-1.5 bg-white">
+        <option value="">All</option>
+        {% for r in recs %}
+        <option value="{{ r }}" {% if filter_rec == r %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="bg-indigo-600 text-white text-sm px-4 py-1.5 rounded hover:bg-indigo-700 transition-colors">Filter</button>
+    <a href="/reports" class="text-sm text-slate-500 hover:text-slate-700 py-1.5">Clear</a>
+  </form>
+
+  <!-- Table -->
+  {% if reports %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Track</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Name</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Sector</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Recommendation</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Generated</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Cost</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in reports %}
+        <tr class="hover:bg-slate-50 transition-colors">
+          <td class="px-4 py-3">{{ track_badge(r.track) }}</td>
+          <td class="px-4 py-3 font-medium text-slate-900">{{ r.display_name }}</td>
+          <td class="px-4 py-3 text-xs text-slate-500">{{ r.sector_id or "—" }}</td>
+          <td class="px-4 py-3">{{ recommendation_badge(r.recommendation, r.conviction) }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400">{{ r.timestamp_display }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400">{% if r.cost_usd is not none %}${{ "%.4f"|format(r.cost_usd) }}{% else %}—{% endif %}</td>
+          <td class="px-4 py-3">
+            {% if r.track == "established" %}
+              <a href="/reports/{{ r.identifier }}/{{ r.timestamp }}" class="text-indigo-600 hover:text-indigo-800 text-xs font-medium">View →</a>
+            {% else %}
+              <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}" class="text-sky-600 hover:text-sky-800 text-xs font-medium">View →</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if total_pages > 1 %}
+  <div class="flex items-center gap-2 text-sm">
+    {% if page > 1 %}<a href="?page={{ page - 1 }}&track={{ filter_track }}&sector={{ filter_sector }}&rec={{ filter_rec }}" class="text-indigo-600 hover:text-indigo-800">← Prev</a>{% endif %}
+    <span class="text-slate-500">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a href="?page={{ page + 1 }}&track={{ filter_track }}&sector={{ filter_sector }}&rec={{ filter_rec }}" class="text-indigo-600 hover:text-indigo-800">Next →</a>{% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center">
+    <p class="text-slate-500 text-sm">No reports match your filters.</p>
+    <a href="/reports" class="mt-2 inline-block text-indigo-600 hover:text-indigo-800 text-sm">Clear filters</a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

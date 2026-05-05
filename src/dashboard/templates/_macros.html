@@ -1,0 +1,52 @@
+{% macro recommendation_badge(rec, conviction) %}
+  {% set colours = {
+    "AVOID": "bg-rose-100 text-rose-800 border-rose-300",
+    "WATCHLIST": "bg-amber-100 text-amber-800 border-amber-300",
+    "STARTER": "bg-blue-100 text-blue-800 border-blue-300",
+    "CORE": "bg-emerald-100 text-emerald-800 border-emerald-300",
+    "INSUFFICIENT_DATA": "bg-slate-100 text-slate-700 border-slate-300"
+  } %}
+  <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border {{ colours.get(rec | upper if rec else '', 'bg-slate-100 text-slate-700 border-slate-300') }}">
+    {{ rec or "—" }}{% if conviction %} · {{ conviction }}{% endif %}
+  </span>
+{% endmacro %}
+
+{% macro track_badge(track) %}
+  {% if track == "emerging_pre_ipo" %}
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-800 border border-sky-300">PRE-IPO</span>
+  {% else %}
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-300">EST</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro source_status_badge(status) %}
+  {% set colours = {
+    "WORKING": "bg-emerald-100 text-emerald-800",
+    "configured": "bg-emerald-100 text-emerald-800",
+    "no-key": "bg-emerald-100 text-emerald-800",
+    "UNVERIFIED": "bg-amber-100 text-amber-800",
+    "SET BUT UNVERIFIED": "bg-amber-100 text-amber-800",
+    "INVALID": "bg-rose-100 text-rose-800",
+    "NOT_SET": "bg-slate-100 text-slate-600"
+  } %}
+  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ colours.get(status, 'bg-slate-100 text-slate-600') }}">
+    {{ status }}
+  </span>
+{% endmacro %}
+
+{% macro persona_pill(persona, verdict) %}
+  {% set buy_verdicts = ["BUY", "STRONG_BUY", "CORE", "STARTER"] %}
+  {% set avoid_verdicts = ["AVOID", "STRONG_AVOID", "SELL"] %}
+  {% if verdict | upper in buy_verdicts %}
+    {% set cls = "bg-emerald-100 text-emerald-800 border-emerald-300" %}
+  {% elif verdict | upper in avoid_verdicts %}
+    {% set cls = "bg-rose-100 text-rose-800 border-rose-300" %}
+  {% elif verdict | upper == "WATCHLIST" %}
+    {% set cls = "bg-amber-100 text-amber-800 border-amber-300" %}
+  {% else %}
+    {% set cls = "bg-slate-100 text-slate-700 border-slate-300" %}
+  {% endif %}
+  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium {{ cls }}">
+    <span class="font-semibold">{{ persona }}</span> {{ verdict or "—" }}
+  </span>
+{% endmacro %}

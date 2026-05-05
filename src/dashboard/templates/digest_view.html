@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Brief {{ brief.date }} — VisionAiry2{% endblock %}
+
+{% block auto_refresh %}<meta http-equiv="refresh" content="60">{% endblock %}
+
+{% block content %}
+<div class="flex flex-col lg:flex-row gap-5">
+
+  <!-- Main brief content -->
+  <div class="lg:w-3/4">
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h1 class="text-xl font-bold text-slate-900">Daily Brief — {{ brief.date }}</h1>
+        <a href="/digest" class="text-indigo-600 hover:text-indigo-800 text-sm">← All briefs</a>
+      </div>
+      <div class="prose prose-slate prose-sm max-w-none
+                  prose-headings:text-slate-800 prose-headings:font-semibold
+                  prose-h2:text-base prose-h2:mt-6
+                  prose-p:text-slate-700 prose-p:leading-relaxed
+                  prose-li:text-slate-700
+                  prose-strong:text-slate-900
+                  prose-table:text-sm prose-th:bg-slate-50
+                  prose-code:text-indigo-700 prose-code:bg-indigo-50 prose-code:px-1 prose-code:rounded">
+        {{ brief.html | safe }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar: referenced reports -->
+  <div class="lg:w-1/4">
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:sticky lg:top-4">
+      <h3 class="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Referenced Tickers</h3>
+      {% if referenced_tickers %}
+      <ul class="space-y-1">
+        {% for ticker in referenced_tickers %}
+        <li>
+          <a href="/reports/{{ ticker }}" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">{{ ticker }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-xs text-slate-400">No tickers detected in this brief.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_macros.html" import recommendation_badge %}
+
+{% block title %}Watchlist — VisionAiry2{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-bold text-slate-900">Watchlist</h1>
+    <span class="text-sm text-slate-500">{{ total_count }} companies</span>
+  </div>
+
+  {% if sectors %}
+    {% for sector_id in sectors.keys() | sort %}
+    {% set companies = sectors[sector_id] %}
+    <details open class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <summary class="px-5 py-3 cursor-pointer select-none bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <span class="font-semibold text-slate-800 text-sm">{{ sector_id }}</span>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-500">{{ companies | length }} companies</span>
+          <code class="text-xs bg-slate-100 text-slate-600 rounded px-2 py-0.5 hidden sm:block">uv run visionairy2 discover --sectors {{ sector_id }} --top-n 5</code>
+        </div>
+      </summary>
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-100">
+          <tr>
+            <th class="text-left px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide">Ticker</th>
+            <th class="text-left px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide">Name</th>
+            <th class="text-left px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide">Tier</th>
+            <th class="text-left px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide">Last Report</th>
+            <th class="text-left px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide">Last Rec</th>
+            <th class="text-left px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide">Reports</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          {% for c in companies %}
+          <tr class="hover:bg-slate-50 transition-colors">
+            <td class="px-4 py-2.5 font-mono font-semibold text-indigo-700">
+              {% if c.report_count > 0 %}
+              <a href="/reports/{{ c.ticker }}" class="hover:text-indigo-900">{{ c.ticker }}</a>
+              {% else %}
+              {{ c.ticker }}
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-slate-700">{{ c.name }}</td>
+            <td class="px-4 py-2.5">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold
+                {% if c.tier == 'A' %}bg-emerald-100 text-emerald-800{% elif c.tier == 'B' %}bg-blue-100 text-blue-800{% else %}bg-slate-100 text-slate-700{% endif %}">
+                {{ c.tier }}
+              </span>
+            </td>
+            <td class="px-4 py-2.5 text-xs text-slate-400">{{ c.last_report_timestamp or "—" }}</td>
+            <td class="px-4 py-2.5">
+              {% if c.last_recommendation %}
+              {{ recommendation_badge(c.last_recommendation, None) }}
+              {% else %}
+              <span class="text-xs text-slate-400">—</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-xs text-slate-500">{{ c.report_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endfor %}
+  {% else %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center">
+    <p class="text-slate-500 text-sm">Watchlist not seeded yet.</p>
+    <code class="mt-2 block bg-slate-100 rounded p-2 text-xs text-slate-700">uv run visionairy2 init</code>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

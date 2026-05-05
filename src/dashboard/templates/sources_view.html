@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_macros.html" import source_status_badge %}
+
+{% block title %}Sources — VisionAiry2{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-bold text-slate-900">Source Health</h1>
+    <span class="text-sm text-slate-500">{{ working_count }} / {{ total_count }} operational</span>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+    <div class="flex items-center gap-3">
+      <div class="flex-1 bg-slate-200 rounded-full h-2">
+        {% if total_count > 0 %}
+        <div class="h-2 rounded-full {% if working_count == total_count %}bg-emerald-500{% elif working_count > total_count // 2 %}bg-amber-500{% else %}bg-rose-500{% endif %}"
+             style="width: {{ ((working_count / total_count) * 100) | round }}%"></div>
+        {% endif %}
+      </div>
+      <span class="text-sm font-medium text-slate-700">{{ working_count }} / {{ total_count }}</span>
+    </div>
+    <p class="mt-2 text-xs text-slate-500">
+      Re-run validation: <code class="bg-slate-100 rounded px-1">uv run visionairy2 validate-keys</code>
+    </p>
+  </div>
+
+  <!-- Table -->
+  {% if sources %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Source / Key</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Type</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Last Validated</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Docs</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Notes</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for s in sources %}
+        <tr class="hover:bg-slate-50 transition-colors">
+          <td class="px-4 py-3 font-mono text-xs text-slate-700">{{ s.source_id }}</td>
+          <td class="px-4 py-3 text-xs text-slate-500">{% if s.needs_key %}keyed{% else %}no-key{% endif %}</td>
+          <td class="px-4 py-3">{{ source_status_badge(s.status) }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400">{{ s.last_validated[:10] if s.last_validated else "—" }}</td>
+          <td class="px-4 py-3 text-xs text-slate-500">{{ s.doc_count_total or "—" }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400 max-w-xs truncate" title="{{ s.notes }}">{{ (s.notes or "")[:80] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center">
+    <p class="text-slate-500 text-sm">No source status data found.</p>
+    <p class="mt-2 text-xs text-slate-400">Run: <code class="bg-slate-100 rounded px-1">uv run visionairy2 validate-keys</code></p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

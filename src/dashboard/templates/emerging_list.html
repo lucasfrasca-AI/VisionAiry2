@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import recommendation_badge, track_badge %}
+
+{% block title %}Emerging / Pre-IPO — VisionAiry2{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+  <div>
+    <h1 class="text-xl font-bold text-slate-900">Emerging / Pre-IPO Discovery Track</h1>
+    <p class="mt-1 text-sm text-slate-500 max-w-3xl">
+      These entities surfaced via SBIR grants, S-1 filings, IPO calendars, sub-award contracts, and other emerging-discovery signals.
+      They are not yet established public companies; reports use lite analysis depth and default to WATCHLIST recommendation.
+    </p>
+  </div>
+
+  {% if reports %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Entity Name</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Slug</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Last Report</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Recommendation</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Sector</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in reports %}
+        <tr class="hover:bg-sky-50 transition-colors">
+          <td class="px-4 py-3 font-medium text-slate-900">{{ r.display_name }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400 font-mono">{{ r.identifier }}</td>
+          <td class="px-4 py-3 text-xs text-slate-500">{{ r.timestamp_display }}</td>
+          <td class="px-4 py-3">{{ recommendation_badge(r.recommendation, r.conviction) }}</td>
+          <td class="px-4 py-3 text-xs text-sky-600">{{ r.sector_id or "—" }}</td>
+          <td class="px-4 py-3">
+            <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}" class="text-sky-600 hover:text-sky-800 text-xs font-medium">View →</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center">
+    <p class="text-slate-500 text-sm">No emerging discoveries yet.</p>
+    <p class="mt-2 text-xs text-slate-400">Pre-IPO candidates appear when SBIR awards, S-1 filings, or sub-awards are detected during discovery scans.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

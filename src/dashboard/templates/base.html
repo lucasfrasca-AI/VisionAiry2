@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}VisionAiry2{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  {% block auto_refresh %}{% endblock %}
+</head>
+<body class="h-full bg-slate-50 text-slate-800">
+
+  <!-- Navbar -->
+  <nav class="bg-slate-900 text-white shadow-lg">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+      <a href="/" class="text-lg font-bold tracking-tight text-white hover:text-indigo-300 transition-colors">
+        VisionAiry2
+      </a>
+      <div class="flex items-center gap-6 text-sm font-medium">
+        <a href="/" class="hover:text-indigo-300 transition-colors {% if active_page == 'home' %}text-indigo-400{% endif %}">Home</a>
+        <a href="/reports" class="hover:text-indigo-300 transition-colors {% if active_page == 'reports' %}text-indigo-400{% endif %}">
+          Reports{% if nav_established_count is defined and nav_established_count %} <span class="ml-1 bg-slate-700 text-slate-300 text-xs rounded-full px-1.5 py-0.5">{{ nav_established_count }}</span>{% endif %}
+        </a>
+        <a href="/reports/emerging" class="hover:text-indigo-300 transition-colors {% if active_page == 'emerging' %}text-indigo-400{% endif %}">
+          Emerging{% if nav_emerging_count is defined and nav_emerging_count %} <span class="ml-1 bg-sky-900 text-sky-300 text-xs rounded-full px-1.5 py-0.5">{{ nav_emerging_count }}</span>{% endif %}
+        </a>
+        <a href="/digest" class="hover:text-indigo-300 transition-colors {% if active_page == 'digest' %}text-indigo-400{% endif %}">Digest</a>
+        <a href="/sources" class="hover:text-indigo-300 transition-colors {% if active_page == 'sources' %}text-indigo-400{% endif %}">Sources</a>
+        <a href="/watchlist" class="hover:text-indigo-300 transition-colors {% if active_page == 'watchlist' %}text-indigo-400{% endif %}">Watchlist</a>
+      </div>
+      <div class="text-xs text-slate-400">{{ now_utc }}</div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="max-w-7xl mx-auto px-6 py-6">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="max-w-7xl mx-auto px-6 py-4 mt-8 border-t border-slate-200">
+    <p class="text-xs text-slate-500 text-center">
+      VisionAiry2 produces research aids, not financial advice. All outputs may be confidently wrong.
+      Independently verify before any real-money decision.
+    </p>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

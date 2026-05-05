@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% from "_macros.html" import recommendation_badge, track_badge, persona_pill %}
+
+{% block title %}{{ report.display_name }} — VisionAiry2{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+  <!-- Top bar -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div class="flex flex-wrap items-start gap-3">
+      <h1 class="text-2xl font-bold text-slate-900">{{ report.display_name }}</h1>
+      {{ track_badge(report.track) }}
+      {{ recommendation_badge(report.recommendation, report.conviction) }}
+    </div>
+    <div class="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
+      <span>{{ report.timestamp_display }}</span>
+      {% if report.sector_id %}<span class="text-indigo-600">{{ report.sector_id }}</span>{% endif %}
+      {% if report.cost and report.cost.total_usd is not none %}<span>Cost: ${{ "%.4f"|format(report.cost.total_usd) }}</span>{% endif %}
+    </div>
+    <p class="mt-2 text-xs text-rose-600">Research aid only — not financial advice. Independently verify all claims.</p>
+  </div>
+
+  <!-- Two-column layout -->
+  <div class="flex flex-col lg:flex-row gap-5">
+
+    <!-- Main content -->
+    <div class="lg:w-3/4">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+        <div class="prose prose-slate prose-sm max-w-none
+                    prose-headings:text-slate-800 prose-headings:font-semibold
+                    prose-h2:text-base prose-h2:mt-6 prose-h2:mb-2
+                    prose-h3:text-sm prose-h3:mt-4
+                    prose-p:text-slate-700 prose-p:leading-relaxed
+                    prose-li:text-slate-700 prose-li:my-0.5
+                    prose-table:text-sm prose-th:bg-slate-50 prose-th:text-left
+                    prose-strong:text-slate-900
+                    prose-blockquote:text-slate-500 prose-blockquote:border-indigo-300
+                    prose-code:text-indigo-700 prose-code:bg-indigo-50 prose-code:px-1 prose-code:rounded">
+          {{ report.html | safe }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="lg:w-1/4">
+      <div class="space-y-4 lg:sticky lg:top-4">
+
+        {% if report.track == "established" %}
+        <!-- Persona verdicts -->
+        {% set persona_names = ["wood", "druckenmiller", "burry", "lynch"] %}
+        {% set persona_labels = {"wood": "Wood", "druckenmiller": "Druckenmiller", "burry": "Burry", "lynch": "Lynch"} %}
+        {% set has_personas = report.reasoning and (report.reasoning.wood or report.reasoning.druckenmiller or report.reasoning.burry or report.reasoning.lynch) %}
+        {% if has_personas %}
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <h3 class="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Persona Verdicts</h3>
+          <div class="space-y-1">
+            {% for pname in persona_names %}
+            {% if report.reasoning and report.reasoning[pname] is defined and report.reasoning[pname] %}
+              {% set r_text = report.reasoning[pname] %}
+              {# Extract last "verdict": "..." from reasoning trace #}
+              {% set verdict_val = report.persona_verdicts[pname] if report.persona_verdicts is defined and report.persona_verdicts[pname] is defined else "—" %}
+              {{ persona_pill(persona_labels[pname], verdict_val) }}
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Plotly price chart placeholder (populated by JS below) -->
+        {% if report.price_history %}
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <h3 class="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Price (12m)</h3>
+          <div id="price-chart" class="h-40"></div>
+        </div>
+        {% endif %}
+
+        <!-- Reasoning accordion -->
+        {% if report.reasoning %}
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <h3 class="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Reasoning Files</h3>
+          <div class="space-y-1">
+            {% for agent_name, agent_text in report.reasoning.items() %}
+            <details class="group">
+              <summary class="cursor-pointer text-xs font-medium text-indigo-600 hover:text-indigo-800 py-1 list-none flex items-center gap-1">
+                <span class="group-open:rotate-90 transition-transform inline-block">▶</span>
+                {{ agent_name }}
+              </summary>
+              <div class="mt-2 text-xs text-slate-600 whitespace-pre-wrap bg-slate-50 rounded p-2 max-h-60 overflow-y-auto">{{ agent_text[:2000] }}{% if agent_text | length > 2000 %}…{% endif %}</div>
+            </details>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% elif report.track == "emerging_pre_ipo" %}
+        <!-- Why it surfaced -->
+        {% if report.emerging_signals %}
+        <div class="bg-white rounded-xl border border-sky-200 shadow-sm p-4">
+          <h3 class="text-xs font-semibold text-sky-700 uppercase tracking-wide mb-3">Why It Surfaced</h3>
+          <ul class="space-y-1">
+            {% for sig in report.emerging_signals %}
+            <li class="text-xs text-slate-700 flex items-start gap-1.5">
+              <span class="text-sky-500 mt-0.5">◆</span>
+              {{ sig.label }}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <!-- PM reasoning accordion -->
+        {% if report.reasoning %}
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <h3 class="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Agent Reasoning</h3>
+          <div class="space-y-1">
+            {% for agent_name, agent_text in report.reasoning.items() %}
+            <details class="group">
+              <summary class="cursor-pointer text-xs font-medium text-indigo-600 hover:text-indigo-800 py-1 list-none flex items-center gap-1">
+                <span class="group-open:rotate-90 transition-transform inline-block">▶</span>
+                {{ agent_name }}
+              </summary>
+              <div class="mt-2 text-xs text-slate-600 whitespace-pre-wrap bg-slate-50 rounded p-2 max-h-60 overflow-y-auto">{{ agent_text[:2000] }}{% if agent_text | length > 2000 %}…{% endif %}</div>
+            </details>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {% endif %}
+
+        <!-- Cost breakdown -->
+        {% if report.cost and report.cost.per_agent %}
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <h3 class="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Cost Breakdown</h3>
+          <div class="space-y-1">
+            {% for agent, cost in report.cost.per_agent.items() %}
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-600">{{ agent }}</span>
+              <span class="text-slate-500">${{ "%.4f"|format(cost) }}</span>
+            </div>
+            {% endfor %}
+            <div class="border-t border-slate-100 pt-1 mt-1 flex justify-between text-xs font-semibold">
+              <span>Total</span>
+              <span>${{ "%.4f"|format(report.cost.total_usd) }}</span>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if report.track == "established" and report.price_history %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+(function() {
+  var ph = {{ report.price_history | tojson }};
+  if (!ph || !Array.isArray(ph) || ph.length === 0) return;
+  var dates = ph.map(function(d) { return d.date || d.Date || d.t || Object.keys(d)[0]; });
+  var closes = ph.map(function(d) { return d.close || d.Close || d.c || Object.values(d)[0]; });
+  var trace = {x: dates, y: closes, type: 'scatter', mode: 'lines',
+    line: {color: '#475569', width: 1.5}, hovertemplate: '%{x}<br>$%{y:.2f}<extra></extra>'};
+  var layout = {
+    margin: {l: 30, r: 10, t: 10, b: 30},
+    xaxis: {showgrid: false, tickfont: {size: 9}},
+    yaxis: {showgrid: true, gridcolor: '#f1f5f9', tickfont: {size: 9}},
+    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', showlegend: false
+  };
+  Plotly.newPlot('price-chart', [trace], layout, {responsive: true, displayModeBar: false});
+})();
+</script>
+{% endif %}
+{% endblock %}

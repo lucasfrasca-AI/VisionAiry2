@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Server Error — VisionAiry2{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-center min-h-64">
+  <div class="text-center">
+    <p class="text-6xl font-bold text-slate-200">500</p>
+    <h1 class="mt-4 text-xl font-semibold text-slate-700">Something went wrong.</h1>
+    <p class="mt-2 text-sm text-slate-500">Check the terminal for error details.</p>
+    <a href="/" class="mt-6 inline-block bg-indigo-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-indigo-700 transition-colors">← Back to home</a>
+  </div>
+</div>
+{% endblock %}
