@@ -4,9 +4,11 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from fastapi import Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 from src.dashboard.app import app, templates
 from src.dashboard import data as _data
@@ -53,13 +55,18 @@ async def home(request: Request):
     working_statuses = {"WORKING", "configured", "no-key"}
     working = sum(1 for s in sources if s["status"] in working_statuses)
 
+    established_tickers = [r["identifier"] for r in all_reports if r["track"] == "established"][:10]
+    cost_sparkline = _data.generate_cost_sparkline_svg(cost_30d)
+
     return templates.TemplateResponse(request, "home.html", context={
         "active_page": "home",
         "latest_reports": all_reports[:10],
         "latest_brief": latest_brief,
         "cost_30d": cost_30d,
+        "cost_sparkline": cost_sparkline,
         "source_health": {"working": working, "broken": len(sources) - working, "total": len(sources)},
         "track_counts": {"established": established_count, "emerging_pre_ipo": emerging_count},
+        "established_tickers": established_tickers,
         **_nav_counts(),
     })
 
@@ -189,6 +196,33 @@ async def sources_view(request: Request):
         "total_count": len(sources),
         **_nav_counts(),
     })
+
+
+# ── Live price API ────────────────────────────────────────────────────────────
+
+@app.get("/api/price/{ticker}")
+async def api_price(request: Request, ticker: str):
+    if not _data.validate_identifier(ticker, "established"):
+        return JSONResponse({"error": "invalid ticker"}, status_code=404)
+    from src.dashboard.live_data import live_price_service
+    snap = live_price_service.get_snapshot(ticker)
+    if snap is None:
+        return JSONResponse({"error": "no data"}, status_code=404)
+    return JSONResponse(snap)
+
+
+class _BulkRequest(BaseModel):
+    tickers: list[str]
+
+
+@app.post("/api/prices")
+async def api_prices_bulk(body: _BulkRequest):
+    tickers = [t for t in body.tickers if _data.validate_identifier(t, "established")][:100]
+    if not tickers:
+        return JSONResponse({})
+    from src.dashboard.live_data import live_price_service
+    results = live_price_service.get_snapshots_bulk(tickers)
+    return JSONResponse({k: v for k, v in results.items()})
 
 
 # ── Watchlist ─────────────────────────────────────────────────────────────────

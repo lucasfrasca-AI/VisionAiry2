@@ -21,6 +21,102 @@
     <p class="mt-2 text-xs text-rose-600">Research aid only — not financial advice. Independently verify all claims.</p>
   </div>
 
+  {% if report.track == "established" and report.quant_data %}
+  <!-- Quantitative snapshot panel -->
+  {% set qd = report.quant_data %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    {% if qd.sector or qd.industry %}
+    <div class="flex flex-wrap gap-2 mb-4">
+      {% if qd.sector %}<span class="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded">{{ qd.sector }}</span>{% endif %}
+      {% if qd.industry %}<span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded">{{ qd.industry }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Row 1: Live data (JS-populated) -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Current Price</div>
+        <div id="qs-price-{{ report.identifier }}" class="text-xl font-bold text-slate-900">—</div>
+        <div id="qs-change-{{ report.identifier }}" class="text-xs text-slate-400 mt-0.5">—</div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Day Volume</div>
+        <div id="qs-vol-{{ report.identifier }}" class="text-lg font-semibold text-slate-900">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">Avg: <span id="qs-avgvol-{{ report.identifier }}">—</span></div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Market Cap</div>
+        <div id="qs-mcap-{{ report.identifier }}" class="text-lg font-semibold text-slate-900">
+          {{ qd.market_cap_display or "—" }}
+        </div>
+        <div class="text-xs text-slate-400 mt-0.5">Fundamentals data</div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Analyst Target</div>
+        <div class="text-lg font-semibold text-slate-900">{{ ("$%.2f"|format(qd.analyst_target)) if qd.analyst_target else "—" }}</div>
+        <div class="text-xs text-slate-400 mt-0.5">Consensus</div>
+      </div>
+    </div>
+
+    <!-- Row 2: Ratios + 52w range -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">52-Week Range</div>
+        {% if qd.week52_high and qd.week52_low %}
+        <div class="relative h-2 bg-slate-200 rounded-full mt-2 mb-1">
+          <div id="qs-52w-marker-{{ report.identifier }}" class="absolute h-4 w-1 bg-indigo-600 rounded-full -top-1" style="left:50%"></div>
+        </div>
+        <div class="flex justify-between text-xs text-slate-500">
+          <span>${{ "%.2f"|format(qd.week52_low) }}</span>
+          <span>${{ "%.2f"|format(qd.week52_high) }}</span>
+        </div>
+        {% else %}
+        <div class="text-sm font-semibold text-slate-900">—</div>
+        {% endif %}
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">P/E Ratio</div>
+        <div class="text-lg font-semibold text-slate-900">{{ ("%.1f"|format(qd.pe_ratio)) if qd.pe_ratio else "—" }}</div>
+        <div class="text-xs text-slate-400 mt-0.5">Trailing</div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">P/S Ratio</div>
+        <div class="text-lg font-semibold text-slate-900">{{ ("%.1f"|format(qd.ps_ratio)) if qd.ps_ratio else "—" }}</div>
+        <div class="text-xs text-slate-400 mt-0.5">TTM</div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">EV/EBITDA</div>
+        <div class="text-lg font-semibold text-slate-900">{{ ("%.1f"|format(qd.ev_ebitda)) if qd.ev_ebitda else "—" }}</div>
+        <div class="text-xs text-slate-400 mt-0.5">Trailing</div>
+      </div>
+    </div>
+
+    <!-- Row 3: More ratios -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Dividend Yield</div>
+        <div class="text-lg font-semibold text-slate-900">{{ ("%.2f%%"|format(qd.dividend_yield)) if qd.dividend_yield else "—" }}</div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Beta</div>
+        <div class="text-lg font-semibold text-slate-900">{{ ("%.2f"|format(qd.beta)) if qd.beta else "—" }}</div>
+        <div class="text-xs text-slate-400 mt-0.5">vs S&P 500</div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">EPS</div>
+        <div class="text-lg font-semibold text-slate-900">{{ ("$%.2f"|format(qd.eps)) if qd.eps else "—" }}</div>
+        <div class="text-xs text-slate-400 mt-0.5">Diluted TTM</div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">ROE</div>
+        <div class="text-lg font-semibold text-slate-900">{{ ("%.1f%%"|format(qd.roe * 100)) if qd.roe else "—" }}</div>
+        <div class="text-xs text-slate-400 mt-0.5">TTM</div>
+      </div>
+    </div>
+    <p class="text-xs text-slate-400 mt-3">Fundamentals from Alpha Vantage. Live price loaded after render.</p>
+  </div>
+  {% endif %}
+
   <!-- Two-column layout -->
   <div class="flex flex-col lg:flex-row gap-5">
 
@@ -67,13 +163,20 @@
         </div>
         {% endif %}
 
-        <!-- Plotly price chart placeholder (populated by JS below) -->
-        {% if report.price_history %}
+        <!-- Plotly price chart -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <h3 class="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Price (12m)</h3>
+          {% if report.price_history %}
           <div id="price-chart" class="h-40"></div>
+          <a href="https://finance.yahoo.com/quote/{{ report.identifier }}" target="_blank" rel="noopener"
+             class="mt-1 block text-xs text-indigo-500 hover:text-indigo-700">
+            Open in Yahoo Finance ↗
+          </a>
+          {% else %}
+          <p class="text-xs text-slate-400">Historical chart unavailable for this report.
+            Re-run discovery on <strong>{{ report.identifier }}</strong> to fetch fresh price history.</p>
+          {% endif %}
         </div>
-        {% endif %}
 
         <!-- Reasoning accordion -->
         {% if report.reasoning %}
@@ -155,23 +258,55 @@
 {% endblock %}
 
 {% block scripts %}
+{% if report.track == "established" and report.quant_data %}
+<script>
+window.addEventListener('DOMContentLoaded', function() {
+  loadPrice('{{ report.identifier }}', 'qs');
+});
+</script>
+{% endif %}
 {% if report.track == "established" and report.price_history %}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script>
 (function() {
   var ph = {{ report.price_history | tojson }};
   if (!ph || !Array.isArray(ph) || ph.length === 0) return;
-  var dates = ph.map(function(d) { return d.date || d.Date || d.t || Object.keys(d)[0]; });
-  var closes = ph.map(function(d) { return d.close || d.Close || d.c || Object.values(d)[0]; });
-  var trace = {x: dates, y: closes, type: 'scatter', mode: 'lines',
+  var dates = ph.map(function(d) { return d.date || d.Date || d.t; });
+  var closes = ph.map(function(d) { return d.close || d.Close || d.c; });
+
+  function movingAvg(arr, n) {
+    return arr.map(function(_, i) {
+      if (i < n - 1) return null;
+      var sum = 0;
+      for (var j = i - n + 1; j <= i; j++) sum += arr[j];
+      return sum / n;
+    });
+  }
+  var ma50 = movingAvg(closes, 50);
+  var ma200 = movingAvg(closes, 200);
+
+  var tracePrice = {x: dates, y: closes, type: 'scatter', mode: 'lines', name: 'Close',
     line: {color: '#475569', width: 1.5}, hovertemplate: '%{x}<br>$%{y:.2f}<extra></extra>'};
+  var traceMa50 = {x: dates, y: ma50, type: 'scatter', mode: 'lines', name: '50d MA',
+    line: {color: '#818cf8', width: 1, dash: 'dot'}, hoverinfo: 'skip'};
+  var traceMa200 = {x: dates, y: ma200, type: 'scatter', mode: 'lines', name: '200d MA',
+    line: {color: '#f97316', width: 1, dash: 'dot'}, hoverinfo: 'skip'};
+
   var layout = {
     margin: {l: 30, r: 10, t: 10, b: 30},
     xaxis: {showgrid: false, tickfont: {size: 9}},
     yaxis: {showgrid: true, gridcolor: '#f1f5f9', tickfont: {size: 9}},
-    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', showlegend: false
+    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+    legend: {font: {size: 8}, orientation: 'h', y: -0.25},
+    shapes: [{
+      type: 'line', x0: '{{ report.timestamp[:4] }}-{{ report.timestamp[4:6] }}-{{ report.timestamp[6:8] }}',
+      x1: '{{ report.timestamp[:4] }}-{{ report.timestamp[4:6] }}-{{ report.timestamp[6:8] }}',
+      y0: 0, y1: 1, xref: 'x', yref: 'paper',
+      line: {color: '#dc2626', width: 1, dash: 'dash'}
+    }]
   };
-  Plotly.newPlot('price-chart', [trace], layout, {responsive: true, displayModeBar: false});
+  Plotly.newPlot('price-chart', [tracePrice, traceMa50, traceMa200], layout,
+    {responsive: true, displayModeBar: false});
 })();
 </script>
 {% endif %}

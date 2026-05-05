@@ -5,13 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}VisionAiry2{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Prose table styling — Tailwind CDN doesn't include typography plugin tables */
+    .prose table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
+    .prose table th, .prose table td { border: 1px solid #e2e8f0; padding: 0.45rem 0.75rem; text-align: left; vertical-align: top; }
+    .prose table th { background-color: #f8fafc; font-weight: 600; color: #334155; }
+    .prose table tr:nth-child(even) td { background-color: #f8fafc; }
+    .prose table tr:hover td { background-color: #f1f5f9; }
+    /* Scrollable table container (injected by markdown_to_html) */
+    .table-scroll-wrap { overflow-x: auto; margin: 1rem 0; }
+    .table-scroll-wrap table { min-width: 600px; }
+  </style>
   {% block auto_refresh %}{% endblock %}
 </head>
 <body class="h-full bg-slate-50 text-slate-800">
 
   <!-- Navbar -->
   <nav class="bg-slate-900 text-white shadow-lg">
-    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div class="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between">
       <a href="/" class="text-lg font-bold tracking-tight text-white hover:text-indigo-300 transition-colors">
         VisionAiry2
       </a>
@@ -32,18 +43,19 @@
   </nav>
 
   <!-- Main content -->
-  <main class="max-w-7xl mx-auto px-6 py-6">
+  <main class="max-w-screen-2xl mx-auto px-6 py-6">
     {% block content %}{% endblock %}
   </main>
 
   <!-- Footer -->
-  <footer class="max-w-7xl mx-auto px-6 py-4 mt-8 border-t border-slate-200">
+  <footer class="max-w-screen-2xl mx-auto px-6 py-4 mt-8 border-t border-slate-200">
     <p class="text-xs text-slate-500 text-center">
       VisionAiry2 produces research aids, not financial advice. All outputs may be confidently wrong.
       Independently verify before any real-money decision.
     </p>
   </footer>
 
+  <script src="/static/price-loader.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

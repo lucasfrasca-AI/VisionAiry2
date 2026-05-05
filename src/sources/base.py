@@ -102,17 +102,32 @@ class BaseSourceClient(ABC):
         if not self.key_env_var:
             return False
         val = os.environ.get(self.key_env_var, "").strip()
-        if val:
-            return True
-        # Fall back to config.secrets when .env is not in os.environ
-        try:
-            secrets = getattr(self._config, "secrets", None)
-            if secrets is None:
+        if not val:
+            # Fall back to config.secrets when .env is not in os.environ
+            try:
+                secrets = getattr(self._config, "secrets", None)
+                if secrets is None:
+                    return False
+                cfg_val = getattr(secrets, self.key_env_var, None)
+                if not (isinstance(cfg_val, str) and cfg_val.strip()):
+                    return False
+                val = cfg_val.strip()
+            except Exception:
                 return False
-            cfg_val = getattr(secrets, self.key_env_var, None)
-            return isinstance(cfg_val, str) and bool(cfg_val.strip())
-        except Exception:
-            return False
+
+        # Key is set — also check .key_status.json; if validated INVALID, treat as unavailable
+        status_path = Path(__file__).resolve().parent.parent.parent / "data" / ".key_status.json"
+        if status_path.exists():
+            try:
+                import json as _json
+                statuses = _json.loads(status_path.read_text()).get("statuses", {})
+                key_status = statuses.get(self.key_env_var, {}).get("status")
+                if key_status == "INVALID":
+                    return False
+            except Exception:
+                pass  # fail open — don't block a source if status file is unreadable
+
+        return True
 
     @abstractmethod
     def fetch(self, query: SourceQuery) -> SourceResult:

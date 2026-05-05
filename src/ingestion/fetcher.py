@@ -16,12 +16,18 @@ class ParallelFetcher:
         self._config = config
         self._db_session_factory = db_session_factory
 
+    _TOTAL_FETCH_BUDGET_SECS: int = 300  # hard 5-minute cap across all sources
+
     def fetch_all(
         self,
         queries: list[tuple[str, SourceQuery]],
         timeout_per_source: int = 30,
     ) -> list[SourceResult]:
-        """Fetch from multiple sources in parallel. Never raises; errors go into SourceResult.errors."""
+        """Fetch from multiple sources in parallel. Never raises; errors go into SourceResult.errors.
+
+        Hard cap: all sources must return within 300 s total (per-source: 30 s).
+        Sources that exceed their individual timeout are cancelled with errors=["timeout"].
+        """
         results: list[SourceResult] = []
 
         def _fetch_one(source_id: str, query: SourceQuery) -> SourceResult:
@@ -46,28 +52,50 @@ class ParallelFetcher:
                     errors=[str(exc)],
                 )
 
+        t_fetch_start = time.monotonic()
         with ThreadPoolExecutor(max_workers=8) as executor:
             future_map = {
                 executor.submit(_fetch_one, sid, q): (sid, q)
                 for sid, q in queries
             }
-            for future in as_completed(future_map, timeout=timeout_per_source * len(queries) + 60):
-                sid, q = future_map[future]
-                try:
-                    results.append(future.result(timeout=timeout_per_source))
-                except TimeoutError:
-                    logger.warning("source=%s timed out", sid)
-                    results.append(SourceResult(
-                        source=sid, query=q, documents=[],
-                        fetched_at=datetime.now(timezone.utc),
-                        errors=["timeout"],
-                    ))
-                except Exception as exc:
-                    results.append(SourceResult(
-                        source=sid, query=q, documents=[],
-                        fetched_at=datetime.now(timezone.utc),
-                        errors=[str(exc)],
-                    ))
+            remaining = self._TOTAL_FETCH_BUDGET_SECS
+            try:
+                for future in as_completed(future_map, timeout=remaining):
+                    sid, q = future_map[future]
+                    try:
+                        results.append(future.result(timeout=timeout_per_source))
+                    except TimeoutError:
+                        logger.warning("source=%s timed out after %ds", sid, timeout_per_source)
+                        results.append(SourceResult(
+                            source=sid, query=q, documents=[],
+                            fetched_at=datetime.now(timezone.utc),
+                            errors=["timeout"],
+                        ))
+                    except Exception as exc:
+                        results.append(SourceResult(
+                            source=sid, query=q, documents=[],
+                            fetched_at=datetime.now(timezone.utc),
+                            errors=[str(exc)],
+                        ))
+                    remaining = self._TOTAL_FETCH_BUDGET_SECS - (time.monotonic() - t_fetch_start)
+                    if remaining <= 0:
+                        break
+            except TimeoutError:
+                n_done = len(results)
+                n_total = len(queries)
+                logger.warning(
+                    "fetch_all: hit 300s total budget — %d/%d sources returned; proceeding with partial data",
+                    n_done, n_total,
+                )
+                # Fill missing with empty results
+                done_sids = {r.source for r in results}
+                for fut, (sid, q) in future_map.items():
+                    if sid not in done_sids:
+                        results.append(SourceResult(
+                            source=sid, query=q, documents=[],
+                            fetched_at=datetime.now(timezone.utc),
+                            errors=["budget_exceeded"],
+                        ))
 
         return results
 

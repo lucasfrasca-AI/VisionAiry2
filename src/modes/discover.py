@@ -40,6 +40,7 @@ def run_discovery(
     emerging_only: bool = False,
     established_only: bool = False,
 ) -> dict[str, Any]:
+    import sys
     t_start = time.time()
 
     def _emit(msg: str):
@@ -47,6 +48,13 @@ def run_discovery(
             progress_cb(msg)
         else:
             log.info(msg)
+
+    def _phase(msg: str):
+        """Print a phase-boundary line to stdout with timestamp, flushing immediately."""
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        line = f"[{ts}] {msg}"
+        print(line, flush=True)
+        log.info(msg)
 
     from src.config import get_config
     cfg = get_config()
@@ -65,6 +73,7 @@ def run_discovery(
         n_est = established_n if established_n is not None else max(1, round(top_n * 0.6))
         n_em = emerging_n if emerging_n is not None else max(1 if top_n >= 2 else 0, top_n - n_est)
 
+    _phase(f"Phase 1/8: Fetching from sources — sectors={sectors}, lookback={lookback_days_qual}d")
     _emit(f"[discover] Starting scan — sectors={sectors}, top_n={top_n} "
           f"(established={n_est}, emerging={n_em}), dry_run={dry_run}")
 
@@ -78,14 +87,22 @@ def run_discovery(
         sectors, lookback_days=max(lookback_days_quant, lookback_days_qual)
     )
 
-    _emit(f"[discover] Fetched {len(scan_ctx['all_documents'])} deduplicated documents")
+    n_main_docs = len(scan_ctx['all_documents'])
+    _phase(f"Phase 1/8: Main sources done — {n_main_docs} documents fetched")
 
     # Also fetch from emerging-signal sources
     emerging_docs = _fetch_emerging_sources(sectors, cfg, lookback_days_qual, _emit)
     all_emerging_flat = [d for docs in emerging_docs.values() for d in docs]
-    _emit(f"[discover] Emerging sources returned {len(all_emerging_flat)} additional documents")
 
+    n_sources_ok = len([k for k, v in emerging_docs.items() if v])
+    _phase(f"Phase 1/8: Done — {n_main_docs + len(all_emerging_flat)} total docs "
+           f"({n_main_docs} main + {len(all_emerging_flat)} emerging, {n_sources_ok} emerging sources returned data)")
+
+    _phase("Phase 2/8: Deduplicating documents")
     mentions = scan_ctx.get("company_mentions", {})
+    _phase(f"Phase 2/8: Done — {n_main_docs} docs after dedup")
+
+    _phase("Phase 3/8: Entity extraction (from documents)")
     _emit(f"[discover] Resolved {len(mentions)} unique tickers from entity extraction")
 
     # Merge emerging entities into mentions
@@ -95,10 +112,13 @@ def run_discovery(
             mentions[entity] = []
         mentions[entity] = list(set(mentions.get(entity, []) + doc_ids))
 
+    _phase(f"Phase 3/8: Done — {len(mentions)} unique entities found")
+
     scorer = InterestingnessScorer()
     all_docs_rebuilt = _rebuild_docs(scan_ctx["all_documents"])
     all_docs_rebuilt.extend(all_emerging_flat)
 
+    _phase(f"Phase 4/8: Sector filter — {len(mentions)} candidates against sectors={sectors}")
     # Stage A: hard sector gate
     doc_id_index: dict[str, Any] = {d.source_id: d for d in all_docs_rebuilt}
     filter_candidates = [
@@ -110,6 +130,7 @@ def run_discovery(
     n_active = sum(1 for c in filtered_candidates if c.get("sector_status") == "active")
     n_adjacent = sum(1 for c in filtered_candidates if c.get("sector_status") == "adjacent")
     n_dropped = len(filter_candidates) - len(filtered_candidates)
+    _phase(f"Phase 4/8: Done — {n_active} active, {n_adjacent} adjacent, {n_dropped} dropped (off-sector)")
     _emit(f"[discover] Sector filter: {n_active} active, {n_adjacent} adjacent, {n_dropped} dropped (off-sector)")
 
     if not filtered_candidates:
@@ -130,6 +151,7 @@ def run_discovery(
             "elapsed_sec": round(time.time() - t_start, 1),
         }
 
+    _phase("Phase 5/8: Scoring + track split")
     # Stage B: split into established / emerging tracks
     established_candidates, emerging_candidates = scorer.split_candidates(filtered_candidates, cfg)
     _emit(f"[discover] Track split: {len(established_candidates)} established, "
@@ -168,6 +190,7 @@ def run_discovery(
     top_emerging = [r["company_id"] for r in two_track["emerging"]]
     top_candidates = top_established + top_emerging
 
+    _phase(f"Phase 5/8: Done — {len(top_established)} established, {len(top_emerging)} emerging selected")
     _emit(f"[discover] Established candidates: {top_established}")
     _emit(f"[discover] Emerging candidates:    {top_emerging}")
     _emit(f"[discover] Split stats: {two_track['split_stats']}")
@@ -192,8 +215,14 @@ def run_discovery(
     candidate_reports = []
     from src.modes._pipeline import generate_candidate_report
 
+    n_to_generate = len(top_established) + len(top_emerging)
+    _phase(f"Phase 6/8: Generating {n_to_generate} reports — est. {2*n_to_generate}–{3*n_to_generate} min")
+    _report_idx = [0]
+
     for ticker in top_established:
+        _report_idx[0] += 1
         sector_id = _guess_sector(ticker, sectors, cfg)
+        _phase(f"Phase 6/8: Report {_report_idx[0]}/{n_to_generate} — {ticker} (established, {sector_id})")
         _emit(f"[discover] Generating report for {ticker} (established, sector: {sector_id})")
         try:
             result = generate_candidate_report(
@@ -204,22 +233,28 @@ def run_discovery(
                 llm_client=llm_client,
             )
             total_cost += result.get("cost_usd", 0.0)
+            rec = result.get("recommendation")
+            cost = result.get("cost_usd", 0.0)
             candidate_reports.append({
                 "ticker": ticker,
                 "track": "established",
-                "recommendation": result.get("recommendation"),
+                "recommendation": rec,
                 "conviction": result.get("conviction"),
                 "report_path": result.get("report_path"),
-                "cost_usd": result.get("cost_usd"),
+                "cost_usd": cost,
                 "aborted": result.get("aborted", False),
             })
-            _emit(f"[discover] {ticker} done — {result.get('recommendation')} (${result.get('cost_usd', 0):.3f})")
+            _phase(f"Phase 6/8: Report {_report_idx[0]}/{n_to_generate} done — {ticker} → {rec} (${cost:.3f})")
+            _emit(f"[discover] {ticker} done — {rec} (${cost:.3f})")
         except Exception as exc:
             log.error("Report generation failed for %s: %s", ticker, exc)
+            _phase(f"Phase 6/8: Report {_report_idx[0]}/{n_to_generate} FAILED — {ticker}: {exc}")
             candidate_reports.append({"ticker": ticker, "track": "established", "error": str(exc)})
 
     for ticker in top_emerging:
+        _report_idx[0] += 1
         sector_id = _guess_sector(ticker, sectors, cfg)
+        _phase(f"Phase 6/8: Report {_report_idx[0]}/{n_to_generate} — {ticker} (emerging, {sector_id})")
         _emit(f"[discover] Generating report for {ticker} (emerging, sector: {sector_id})")
         # Treat as pre-IPO if no real ticker format OR explicitly flagged
         c_data = next((c for c in emerging_candidates if c.get("ticker") == ticker), {})
@@ -246,28 +281,35 @@ def run_discovery(
                     pre_ipo_dir.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(src_dir), str(pre_ipo_dir))
                 rp = str(pre_ipo_dir / Path(rp).name)
+            rec = result.get("recommendation")
+            cost = result.get("cost_usd", 0.0)
             candidate_reports.append({
                 "ticker": ticker,
                 "track": "emerging",
                 "is_pre_ipo": is_pre_ipo,
-                "recommendation": result.get("recommendation"),
+                "recommendation": rec,
                 "conviction": result.get("conviction"),
                 "report_path": rp,
-                "cost_usd": result.get("cost_usd"),
+                "cost_usd": cost,
                 "aborted": result.get("aborted", False),
             })
-            _emit(f"[discover] {ticker} done — {result.get('recommendation')} (${result.get('cost_usd', 0):.3f})")
+            _phase(f"Phase 6/8: Report {_report_idx[0]}/{n_to_generate} done — {ticker} → {rec} (${cost:.3f})")
+            _emit(f"[discover] {ticker} done — {rec} (${cost:.3f})")
         except Exception as exc:
             log.error("Emerging report generation failed for %s: %s", ticker, exc)
+            _phase(f"Phase 6/8: Report {_report_idx[0]}/{n_to_generate} FAILED — {ticker}: {exc}")
             candidate_reports.append({"ticker": ticker, "track": "emerging", "error": str(exc)})
 
+    _phase("Phase 7/8: Writing daily brief")
     brief_path = _generate_brief(candidate_reports, sectors, scan_ctx, db_session_factory, llm_client)
+    _phase(f"Phase 7/8: Done — brief at {brief_path}")
     _emit(f"[discover] Brief written to {brief_path}")
 
     _save_scan_to_db(scan_id, sectors, lookback_days_quant, lookback_days_qual,
                      len(mentions), len(candidate_reports), total_cost, brief_path, db_session_factory)
 
     elapsed = round(time.time() - t_start, 1)
+    _phase(f"Phase 8/8: Scan complete in {elapsed}s — total cost ${total_cost:.3f}")
     _emit(f"[discover] Scan complete in {elapsed}s, total cost ${total_cost:.3f}")
 
     return {

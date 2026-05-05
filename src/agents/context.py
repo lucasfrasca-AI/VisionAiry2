@@ -100,6 +100,32 @@ class AgentContextBuilder:
             except Exception as exc:
                 completeness["yfinance"] = f"error: {exc}"
 
+        # ── price history (1y daily for Plotly chart) ─────────────────────
+        ctx["price_history"] = []
+        if _REAL_TICKER_RE.match(ticker):
+            try:
+                import yfinance as yf
+                t_obj = yf.Ticker(ticker)
+                hist = t_obj.history(period="1y", interval="1d")
+                ctx["price_history"] = [
+                    {
+                        "date": d.strftime("%Y-%m-%d"),
+                        "open": round(float(o), 4),
+                        "high": round(float(h), 4),
+                        "low": round(float(l), 4),
+                        "close": round(float(c), 4),
+                        "volume": int(v),
+                    }
+                    for d, o, h, l, c, v in zip(
+                        hist.index, hist["Open"], hist["High"],
+                        hist["Low"], hist["Close"], hist["Volume"]
+                    )
+                ]
+                completeness["price_history"] = f"{len(ctx['price_history'])} days"
+            except Exception as exc:
+                completeness["price_history"] = f"error: {exc}"
+                ctx["price_history"] = []
+
         # ── SEC filings ───────────────────────────────────────────────────
         try:
             client = get_client("edgar", config=None, db_session_factory=self._db)

@@ -633,6 +633,18 @@ def ping_cmd() -> None:
     console.print(table)
 
 
+def _validate_sectors(sector_list: list[str], cfg) -> None:
+    """Exit fast on unknown sector IDs."""
+    valid_ids = {s.id for s in cfg.sectors}
+    unknown = [s for s in sector_list if s not in valid_ids]
+    if unknown:
+        console.print(
+            f"[red]Unknown sector IDs: {unknown}[/red]\n"
+            f"Available: {sorted(valid_ids)}"
+        )
+        raise typer.Exit(code=1)
+
+
 @app.command("discover")
 def discover_cmd(
     sectors: Optional[str] = typer.Option(None, "--sectors",
@@ -652,18 +664,32 @@ def discover_cmd(
         help="Skip established-company track."),
     established_only: bool = typer.Option(False, "--established-only",
         help="Skip emerging-company track."),
+    verbose: bool = typer.Option(False, "--verbose",
+        help="Show per-source error details (default: summary only)."),
+    quiet: bool = typer.Option(False, "--quiet",
+        help="Suppress all output except final summary (for cron use)."),
 ) -> None:
     """Mode 1 — autonomous discovery scan (established + emerging two-track)."""
     from src.modes.discover import run_discovery
     from src.storage.db import get_session_factory
 
+    cfg = get_config()
     sector_list = [s.strip() for s in sectors.split(",")] if sectors else None
+    if sector_list:
+        _validate_sectors(sector_list, cfg)
+
     session_factory = get_session_factory()
 
     t0 = __import__("time").time()
-    console.print(f"[bold]Starting discovery scan[/bold] — dry_run={dry_run}, top_n={top_n}")
+    if not quiet:
+        console.print(f"[bold]Starting discovery scan[/bold] — dry_run={dry_run}, top_n={top_n}")
 
     def _progress(msg: str):
+        if quiet:
+            return
+        # Suppress per-source verbose error lines unless --verbose
+        if not verbose and "[error]" in msg.lower():
+            return
         elapsed = round(__import__("time").time() - t0, 1)
         console.print(f"[dim][{elapsed}s][/dim] {msg}")
 

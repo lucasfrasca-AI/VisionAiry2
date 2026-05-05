@@ -41,8 +41,20 @@ def slugify_to_display_name(slug: str) -> str:
     return " ".join(w.capitalize() for w in slug.replace("-", " ").split())
 
 
+def _wrap_tables(html: str) -> str:
+    """Wrap each <table> in a horizontally-scrollable container."""
+    import re
+    return re.sub(
+        r'(<table[^>]*>.*?</table>)',
+        r'<div class="table-scroll-wrap">\1</div>',
+        html,
+        flags=re.DOTALL,
+    )
+
+
 def markdown_to_html(md: str) -> str:
-    return _md.markdown(md, extensions=["tables", "fenced_code"])
+    html = _md.markdown(md, extensions=["tables", "fenced_code"])
+    return _wrap_tables(html)
 
 
 def _load_json(path: Path) -> Any:
@@ -216,6 +228,10 @@ def get_report(identifier: str, timestamp: str, track: str = "auto") -> dict | N
     if track == "emerging_pre_ipo":
         emerging_signals = _extract_emerging_signals(data)
 
+    quant_data: dict | None = None
+    if track == "established":
+        quant_data = _extract_quant_data(data)
+
     display_name = identifier if track == "established" else slugify_to_display_name(identifier)
 
     return {
@@ -233,9 +249,60 @@ def get_report(identifier: str, timestamp: str, track: str = "auto") -> dict | N
         "persona_verdicts": persona_verdicts,
         "price_history": price_history,
         "emerging_signals": emerging_signals,
+        "quant_data": quant_data,
         "recommendation": rec,
         "conviction": conviction,
         "sector_id": sector,
+    }
+
+
+def _safe_float(v) -> float | None:
+    try:
+        return float(v) if v is not None and v != "None" and v != "" else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_quant_data(data: dict) -> dict | None:
+    """Pull display-ready quantitative metrics from data.json fundamentals."""
+    f = data.get("fundamentals") or {}
+    if not isinstance(f, dict):
+        return None
+
+    week52_high = _safe_float(f.get("52WeekHigh"))
+    week52_low = _safe_float(f.get("52WeekLow"))
+    week52_pos: float | None = None
+    if week52_high and week52_low and week52_high > week52_low:
+        # Position will be updated by JS using live price; store range for bar
+        week52_pos = None  # JS fills this after fetching live price
+
+    market_cap_raw = _safe_float(f.get("MarketCapitalization"))
+    market_cap_display = None
+    if market_cap_raw:
+        if market_cap_raw >= 1e12:
+            market_cap_display = f"${market_cap_raw / 1e12:.2f}T"
+        elif market_cap_raw >= 1e9:
+            market_cap_display = f"${market_cap_raw / 1e9:.2f}B"
+        elif market_cap_raw >= 1e6:
+            market_cap_display = f"${market_cap_raw / 1e6:.2f}M"
+        else:
+            market_cap_display = f"${market_cap_raw:,.0f}"
+
+    return {
+        "sector": f.get("Sector") or "",
+        "industry": f.get("Industry") or "",
+        "market_cap_raw": market_cap_raw,
+        "market_cap_display": market_cap_display,
+        "pe_ratio": _safe_float(f.get("PERatio")),
+        "ps_ratio": _safe_float(f.get("PriceToSalesRatioTTM")),
+        "ev_ebitda": _safe_float(f.get("EVToEBITDA")),
+        "beta": _safe_float(f.get("Beta")),
+        "dividend_yield": _safe_float(f.get("DividendYield")),
+        "week52_high": week52_high,
+        "week52_low": week52_low,
+        "analyst_target": _safe_float(f.get("AnalystTargetPrice")),
+        "eps": _safe_float(f.get("EPS")),
+        "roe": _safe_float(f.get("ReturnOnEquityTTM")),
     }
 
 
@@ -335,39 +402,120 @@ def list_sources() -> list[dict]:
 
 # ── Watchlist ─────────────────────────────────────────────────────────────────
 
+def _load_sector_labels() -> dict[str, str]:
+    """Return {sector_id: label} from config.yaml."""
+    try:
+        import yaml as _yaml
+        cfg_path = _ROOT / "config.yaml"
+        raw = _yaml.safe_load(cfg_path.read_text())
+        return {s["id"]: s.get("label", s["id"]) for s in raw.get("sectors", [])}
+    except Exception:
+        return {}
+
+
 def list_watchlist() -> list[dict]:
     try:
         from src.storage.db import session_scope
         from src.storage.models import Company, Report
         from sqlalchemy import func
 
+        sector_labels = _load_sector_labels()
+
         with session_scope() as s:
             companies = s.query(Company).filter(Company.is_watchlist == True).all()
             report_counts = dict(
                 s.query(Report.ticker, func.count(Report.id)).group_by(Report.ticker).all()
             )
-            last_reports = {}
+            last_reports: dict[str, Report] = {}
             for r in s.query(Report).order_by(Report.generated_at.desc()).all():
                 if r.ticker not in last_reports:
                     last_reports[r.ticker] = r
 
+            now = datetime.now(timezone.utc)
             results = []
             for c in companies:
                 lr = last_reports.get(c.ticker)
+                last_ts = None
+                days_since = None
+                last_price = None
+                if lr:
+                    last_ts = lr.generated_at.strftime("%Y-%m-%d")
+                    # generated_at may be naive — make tz-aware for delta calc
+                    ga = lr.generated_at
+                    if ga.tzinfo is None:
+                        ga = ga.replace(tzinfo=timezone.utc)
+                    days_since = (now - ga).days
+                    # Try to extract last price from the report's data.json on disk
+                    last_price = _extract_price_from_report(c.ticker, lr.generated_at)
+
+                sector_id = c.sector_id or ""
                 results.append({
                     "ticker": c.ticker,
                     "name": c.name or c.ticker,
-                    "sector_id": c.sector_id or "",
+                    "sector_id": sector_id,
+                    "sector_label": sector_labels.get(sector_id, sector_id),
                     "tier": c.tier or "C",
-                    "last_report_timestamp": lr.generated_at.strftime("%Y-%m-%d") if lr else None,
+                    "last_report_timestamp": last_ts,
                     "last_recommendation": lr.conviction_level if lr else None,
+                    "last_conviction": lr.conviction_level if lr else None,
                     "report_count": report_counts.get(c.ticker, 0),
+                    "last_price_at_report": last_price,
+                    "days_since_last_report": days_since,
                 })
 
             results.sort(key=lambda r: (r["tier"] or "C", r["ticker"]))
             return results
     except Exception:
         return []
+
+
+def _extract_price_from_report(ticker: str, generated_at) -> float | None:
+    """Try to pull the price from reports/<ticker>/<ts>/data.json."""
+    try:
+        ts_str = generated_at.strftime("%Y%m%dT%H%M%SZ")
+        data_path = _REPORTS_ROOT / ticker / ts_str / "data.json"
+        if not data_path.exists():
+            return None
+        data = _load_json(data_path)
+        if not data:
+            return None
+        price = (
+            data.get("current_price")
+            or data.get("price", {}).get("current_price")
+            or data.get("fundamentals", {}).get("current_price")
+        )
+        return float(price) if price else None
+    except Exception:
+        return None
+
+
+# ── Cost sparkline ────────────────────────────────────────────────────────────
+
+def generate_cost_sparkline_svg(cost_data: dict, width: int = 200, height: int = 40) -> str:
+    """Generate a simple server-side SVG sparkline from daily cost data."""
+    by_day = cost_data.get("by_day", [])
+    if len(by_day) < 2:
+        return ""
+    values = [d["usd"] for d in by_day]
+    max_v = max(values) or 1.0
+    n = len(values)
+    padding = 4
+    w = width - 2 * padding
+    h = height - 2 * padding
+    step = w / (n - 1) if n > 1 else w
+    points = []
+    for i, v in enumerate(values):
+        x = padding + i * step
+        y = padding + h - (v / max_v) * h
+        points.append(f"{x:.1f},{y:.1f}")
+    polyline = " ".join(points)
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}" class="text-indigo-500">'
+        f'<polyline points="{polyline}" fill="none" stroke="currentColor" stroke-width="1.5" '
+        f'stroke-linecap="round" stroke-linejoin="round"/>'
+        f'</svg>'
+    )
 
 
 # ── Cost summary ──────────────────────────────────────────────────────────────
