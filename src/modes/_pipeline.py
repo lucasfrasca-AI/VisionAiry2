@@ -20,6 +20,7 @@ def generate_candidate_report(
     depth: str = "medium",
     db_session_factory: Any = None,
     llm_client: Any = None,
+    is_pre_ipo: bool = False,
 ) -> dict[str, Any]:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     report_dir = Path("reports") / ticker / timestamp
@@ -37,7 +38,10 @@ def generate_candidate_report(
         all_agent_outputs["portfolio_manager"] = _output_to_dict(pm_output)
         cost_tracker["portfolio_manager"] = pm_output.cost_usd
 
-        polished = _run_report_writer(ticker, ctx, all_agent_outputs, report_dir, db_session_factory, llm_client)
+        polished = _run_report_writer(
+            ticker, ctx, all_agent_outputs, report_dir, db_session_factory, llm_client,
+            is_pre_ipo=is_pre_ipo,
+        )
         cost_tracker["report_writer"] = polished.cost_usd
 
         total_cost = sum(cost_tracker.values())
@@ -184,12 +188,15 @@ def _run_portfolio_manager_only(ticker, ctx, persona_outputs, extra_outputs, rep
         return agent._insufficient_data_output(str(exc))
 
 
-def _run_report_writer(ticker, ctx, all_agent_outputs, report_dir, db_session_factory, llm_client):
+def _run_report_writer(ticker, ctx, all_agent_outputs, report_dir, db_session_factory, llm_client, is_pre_ipo=False):
     from src.agents.synthesis.report_writer import ReportWriterAgent
     from src.agents.base import AgentInput
-    from src.reports.template import render_draft
+    from src.reports.template import render_draft, render_pre_ipo_draft
 
-    draft = render_draft(ticker, ctx, all_agent_outputs)
+    if is_pre_ipo:
+        draft = render_pre_ipo_draft(ticker, ctx, all_agent_outputs)
+    else:
+        draft = render_draft(ticker, ctx, all_agent_outputs)
     inp = AgentInput(
         target=ticker,
         context_data={"draft": draft},

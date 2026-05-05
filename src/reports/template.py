@@ -27,6 +27,18 @@ REPORT_SECTIONS = [
     "data_gaps",
 ]
 
+PRE_IPO_REPORT_SECTIONS = [
+    "executive_summary",
+    "company_snapshot",
+    "funding_and_validation_signals",
+    "technology_product_description",
+    "recent_catalysts",
+    "why_it_surfaced",
+    "milestones_to_watch",
+    "sources_used",
+    "what_we_could_not_find",
+]
+
 
 def render_draft(
     ticker: str,
@@ -313,6 +325,156 @@ def render_draft(
 Missing or failed sources: {', '.join(missing_sources) if missing_sources else 'none'}
 
 {f'_{dropped_papers} sector-context research paper(s) excluded from this source list as not directly relevant to {ticker}._' if dropped_papers else ''}
+"""
+
+    return report
+
+
+def render_pre_ipo_draft(
+    entity_name: str,
+    context: dict[str, Any],
+    agent_outputs: dict[str, Any],
+) -> str:
+    """Shorter 9-section template for pre-IPO / no-ticker emerging entities."""
+    pm = agent_outputs.get("portfolio_manager", {})
+    pm_parsed = pm.get("parsed", {})
+    pm_summary = pm_parsed.get("summary", pm.get("reasoning", ""))
+
+    sector_id = context.get("sector_id") or "unknown sector"
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    completeness = context.get("data_completeness", {})
+
+    gov_contracts = context.get("gov_contracts", [])
+    news = context.get("news_recent", [])
+    filings = context.get("filings_recent", [])
+
+    def _contract_lines(contracts: list) -> str:
+        if not contracts:
+            return "_No government contract data retrieved._"
+        lines = []
+        for c in contracts[:5]:
+            title = c.get("title", "")
+            url = c.get("url", "")
+            src = c.get("source", "")
+            lines.append(f"- [{title}]({url}) _{src}_" if url else f"- {title} _{src}_")
+        return "\n".join(lines)
+
+    def _filing_lines(filings_list: list) -> str:
+        if not filings_list:
+            return "_No recent filings found._"
+        lines = []
+        for f in filings_list[:5]:
+            title = f.get("title", "SEC Filing")
+            url = f.get("url", "")
+            lines.append(f"- [{title}]({url})" if url else f"- {title}")
+        return "\n".join(lines)
+
+    def _news_lines(news_list: list) -> str:
+        if not news_list:
+            return "_No recent news found._"
+        lines = []
+        for n in news_list[:6]:
+            title = n.get("title", "Untitled")
+            url = n.get("url", "")
+            date = (n.get("published_at") or "")[:10]
+            lines.append(f"- {date} — [{title}]({url})" if url else f"- {date} — {title}")
+        return "\n".join(lines)
+
+    # Emerging signal sources that produced docs for this entity
+    all_docs = (
+        context.get("gov_contracts", [])
+        + context.get("filings_recent", [])
+        + context.get("news_recent", [])
+        + context.get("research_papers", [])
+    )
+    signal_sources = sorted({d.get("source", "") for d in all_docs if d.get("source")})
+
+    missing_sources = [k for k, v in completeness.items()
+                       if "unavailable" in str(v) or "error" in str(v) or "empty" in str(v)]
+
+    # IPO/time horizon hint from PM output
+    time_horizon = pm_parsed.get("time_horizon_months")
+    if time_horizon:
+        horizon_str = f"{time_horizon} months"
+    elif any("ipo" in (d.get("title") or "").lower() for d in filings):
+        horizon_str = "12–24 months (IPO-stage signals present)"
+    else:
+        horizon_str = "24–60 months (early-stage signals only)"
+
+    report = f"""# {entity_name} — Emerging Entity Research Brief
+
+**Generated:** {generated_at}
+**Sector:** {sector_id}
+**Recommendation:** WATCHLIST | **Conviction:** LOW | **Time Horizon:** {horizon_str}
+
+> *Pre-IPO / non-public entity. Fundamental and price data unavailable. This is a research aid, not financial advice.*
+
+---
+
+## 1. Executive Summary
+
+{pm_summary or '_Insufficient data to generate summary. Entity surfaced via government contract/grant signals only._'}
+
+---
+
+## 2. Company Snapshot
+
+**Entity Name:** {entity_name}
+**Sector context:** {sector_id}
+**Public market status:** Pre-IPO / not publicly traded (no ticker resolved)
+**Known details:** See government contract and filing records below.
+
+---
+
+## 3. Funding & Validation Signals
+
+{_contract_lines(gov_contracts)}
+
+**Recent filings:**
+{_filing_lines(filings)}
+
+---
+
+## 4. Technology / Product Description
+
+{pm_parsed.get('bull_case_one_liner') or '_No product description extracted. Review raw contract/grant abstracts in data.json._'}
+
+---
+
+## 5. Recent Catalysts
+
+{_news_lines(news)}
+
+---
+
+## 6. Why It Surfaced
+
+**Signal sources:** {', '.join(signal_sources) if signal_sources else '_unknown_'}
+
+{pm_parsed.get('thesis_breaks_if') or '_No additional surfacing rationale available._'}
+
+---
+
+## 7. Milestones to Watch
+
+- Monitor for S-1 / IPO filing if signals progress
+- Track follow-on government contract awards
+- Watch for Series B/C funding announcements in press
+- **Time horizon estimate:** {horizon_str}
+
+---
+
+## 8. Sources Used
+
+{chr(10).join(f'- {s}' for s in signal_sources) if signal_sources else '_No sources resolved._'}
+
+---
+
+## 9. What We Could Not Find
+
+{chr(10).join(f'- **{k}**: {v}' for k, v in completeness.items() if 'unavailable' in str(v) or 'error' in str(v) or 'empty' in str(v)) or '_No notable gaps._'}
+
+Missing or failed sources: {', '.join(missing_sources) if missing_sources else 'none'}
 """
 
     return report

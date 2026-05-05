@@ -2,12 +2,28 @@
 from __future__ import annotations
 
 import logging
+import re
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 log = logging.getLogger("visionairy2.discover")
+
+_REAL_TICKER_RE = re.compile(r'^[A-Z]{1,5}(\.[A-Z]+)?$')
+
+
+def slugify_entity_name(name: str) -> str:
+    """Convert entity name to filesystem-safe slug."""
+    slug = name.lower()
+    slug = re.sub(r'[^a-z0-9-]+', '-', slug)
+    slug = re.sub(r'-+', '-', slug).strip('-')
+    return slug[:60]
+
+
+def _is_real_ticker(s: str) -> bool:
+    return bool(_REAL_TICKER_RE.match(s))
 
 
 def run_discovery(
@@ -51,6 +67,8 @@ def run_discovery(
 
     _emit(f"[discover] Starting scan — sectors={sectors}, top_n={top_n} "
           f"(established={n_est}, emerging={n_em}), dry_run={dry_run}")
+
+    _warn_orphaned_report_dirs(_emit)
 
     from src.agents.context import AgentContextBuilder
     from src.ingestion.scorer import InterestingnessScorer
@@ -203,9 +221,9 @@ def run_discovery(
     for ticker in top_emerging:
         sector_id = _guess_sector(ticker, sectors, cfg)
         _emit(f"[discover] Generating report for {ticker} (emerging, sector: {sector_id})")
-        # Check if pre-IPO (no real ticker or only from pre-market sources)
+        # Treat as pre-IPO if no real ticker format OR explicitly flagged
         c_data = next((c for c in emerging_candidates if c.get("ticker") == ticker), {})
-        is_pre_ipo = c_data.get("is_pre_ipo", False)
+        is_pre_ipo = c_data.get("is_pre_ipo", False) or not _is_real_ticker(ticker)
         report_depth = "lite" if is_pre_ipo else "medium"
         try:
             result = generate_candidate_report(
@@ -214,20 +232,20 @@ def run_discovery(
                 depth=report_depth,
                 db_session_factory=db_session_factory,
                 llm_client=llm_client,
+                is_pre_ipo=is_pre_ipo,
             )
             total_cost += result.get("cost_usd", 0.0)
             rp = result.get("report_path", "")
-            if is_pre_ipo and rp:
-                # Reroute report to _emerging_pre_ipo_ directory
-                slug = ticker.lower().replace(" ", "_")[:30]
-                ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-                pre_ipo_dir = Path(f"reports/_emerging_pre_ipo_/{slug}/{ts}")
-                pre_ipo_dir.mkdir(parents=True, exist_ok=True)
-                src_path = Path(rp)
-                if src_path.exists():
-                    dest = pre_ipo_dir / src_path.name
-                    dest.write_text(src_path.read_text())
-                    rp = str(dest)
+            if (not _is_real_ticker(ticker) or is_pre_ipo) and rp:
+                # Reroute to reports/_emerging_pre_ipo_/<slug>/<ts>/
+                slug = slugify_entity_name(ticker)
+                ts_report = result.get("timestamp", datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+                pre_ipo_dir = Path("reports/_emerging_pre_ipo_") / slug / ts_report
+                src_dir = Path(rp).parent
+                if src_dir.exists() and src_dir != pre_ipo_dir:
+                    pre_ipo_dir.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(src_dir), str(pre_ipo_dir))
+                rp = str(pre_ipo_dir / Path(rp).name)
             candidate_reports.append({
                 "ticker": ticker,
                 "track": "emerging",
@@ -324,6 +342,24 @@ def _fetch_emerging_sources(
             emit(f"[discover] {source_id} fetch failed: {exc}")
 
     return results
+
+
+def _warn_orphaned_report_dirs(emit) -> None:
+    """Warn (do not delete) if top-level report dirs with spaces or special chars exist."""
+    reports_root = Path("reports")
+    if not reports_root.exists():
+        return
+    _reserved = {"_emerging_pre_ipo_", "_doc_analysis_"}
+    bad = [
+        d.name for d in reports_root.iterdir()
+        if d.is_dir() and d.name not in _reserved and not _REAL_TICKER_RE.match(d.name)
+    ]
+    if bad:
+        emit(
+            f"[discover] WARNING: Found {len(bad)} orphaned report dir(s) with non-slug names "
+            f"({bad[:3]}{'...' if len(bad) > 3 else ''}). "
+            "Move to reports/_emerging_pre_ipo_/ or delete manually."
+        )
 
 
 def _extract_emerging_entities(docs: list) -> dict[str, list[str]]:

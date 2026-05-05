@@ -4,10 +4,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+_REAL_TICKER_RE = re.compile(r'^[A-Z]{1,5}(\.[A-Z]+)?$')
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 CONTEXT_CACHE_DIR = ROOT / "data" / "raw" / "agent_context"
@@ -81,18 +84,21 @@ class AgentContextBuilder:
                 completeness[src_id] = f"error: {exc}"
 
         # ── price ─────────────────────────────────────────────────────────
-        try:
-            client = get_client("yfinance", config=None, db_session_factory=self._db)
-            if client.is_available():
-                q = SourceQuery(ticker=ticker, limit=1)
-                result = client.fetch(q)
-                if result.documents:
-                    ctx["price"] = result.documents[0].raw_payload
-                    if not ctx["company_name"]:
-                        ctx["company_name"] = result.documents[0].title
-                completeness["yfinance"] = "ok" if result.documents else "empty"
-        except Exception as exc:
-            completeness["yfinance"] = f"error: {exc}"
+        if not _REAL_TICKER_RE.match(ticker):
+            completeness["yfinance"] = "skipped: not_ticker_format"
+        else:
+            try:
+                client = get_client("yfinance", config=None, db_session_factory=self._db)
+                if client.is_available():
+                    q = SourceQuery(ticker=ticker, limit=1)
+                    result = client.fetch(q)
+                    if result.documents:
+                        ctx["price"] = result.documents[0].raw_payload
+                        if not ctx["company_name"]:
+                            ctx["company_name"] = result.documents[0].title
+                    completeness["yfinance"] = "ok" if result.documents else "empty"
+            except Exception as exc:
+                completeness["yfinance"] = f"error: {exc}"
 
         # ── SEC filings ───────────────────────────────────────────────────
         try:

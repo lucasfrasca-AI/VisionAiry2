@@ -43,7 +43,8 @@ tests/smoke.py           Import + init + routing smoke tests
 vendor/                  Read-only reference repos (gitignored). Never imported.
 data/state.db            SQLite (gitignored)
 data/raw/<source>/<sha>  Raw fetched documents (gitignored)
-reports/<ticker>/<ts>/   Generated reports
+reports/<ticker>/<ts>/   Generated reports (established + real-ticker emerging)
+reports/_emerging_pre_ipo_/<slug>/<ts>/  Pre-IPO / non-public entity reports (slug = lowercased entity name, special chars → "-")
 digest/<date>.md         Daily briefs
 ```
 
