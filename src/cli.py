@@ -779,6 +779,79 @@ def analyse_doc_cmd(
     console.print(f"Report: [cyan]{result.get('report_path', '?')}[/cyan]")
 
 
+_TICKER_RE = re.compile(r"^[A-Z]{1,5}(\.[A-Z]+)?$")
+
+
+@app.command("analyse-ticker")
+def analyse_ticker_cmd(
+    ticker: str = typer.Argument(..., help="Ticker symbol, e.g. TSLA"),
+    depth: str = typer.Option("full", "--depth", help="full (4 personas) or lite (portfolio manager only)"),
+    sector: Optional[str] = typer.Option(None, "--sector", help="Sector hint (optional)."),
+) -> None:
+    """Generate a full report for any ticker on demand, without needing a discovery scan."""
+    from src.modes._pipeline import generate_candidate_report
+    from src.storage.db import get_session_factory
+
+    ticker = ticker.upper().strip()
+    if not _TICKER_RE.match(ticker):
+        console.print(f"[red]Invalid ticker format: {ticker!r}. Must match [A-Z]{{1,5}}(\\.[A-Z]+)?[/red]")
+        raise typer.Exit(code=1)
+    if depth not in ("full", "lite"):
+        console.print(f"[red]--depth must be 'full' or 'lite', got {depth!r}[/red]")
+        raise typer.Exit(code=1)
+
+    cfg = get_config()
+    session_factory = get_session_factory()
+
+    # Resolve sector
+    sector_id = sector
+    if not sector_id:
+        # Try to find in watchlist
+        for wl_sector, entries in (cfg.watchlist or {}).items():
+            for e in entries:
+                t = e.ticker if hasattr(e, "ticker") else (e.get("ticker", "") if isinstance(e, dict) else "")
+                if t == ticker:
+                    sector_id = wl_sector
+                    break
+            if sector_id:
+                break
+        if not sector_id:
+            sector_id = cfg.sectors[0].id if cfg.sectors else "ai_chips_compute"
+
+    pipeline_depth = "medium" if depth == "full" else "lite"
+    console.print(f"[bold]analyse-ticker:[/bold] {ticker} — depth={depth}, sector={sector_id}")
+    console.print("[dim]Building context and running agent pipeline...[/dim]")
+
+    t0 = __import__("time").time()
+    try:
+        from src.llm.client import LLMClient
+        llm_client = LLMClient()
+    except Exception:
+        llm_client = None
+
+    try:
+        result = generate_candidate_report(
+            ticker=ticker,
+            sector_id=sector_id,
+            depth=pipeline_depth,
+            db_session_factory=session_factory,
+            llm_client=llm_client,
+        )
+    except Exception as exc:
+        console.print(f"[red]Analysis failed: {exc}[/red]")
+        raise typer.Exit(code=1)
+
+    elapsed = round(__import__("time").time() - t0, 1)
+    rec = result.get("recommendation", "N/A")
+    cost = result.get("total_cost_usd", 0.0)
+    report_path = result.get("report_path", "?")
+
+    console.print(f"\n[bold green]Done[/bold green] in {elapsed}s")
+    console.print(f"Recommendation: [bold]{rec}[/bold] | Cost: [bold]${cost:.4f}[/bold]")
+    console.print(f"Report: [cyan]{report_path}[/cyan]")
+    console.print(f"Dashboard: [cyan]http://localhost:8000/reports/{ticker}/{result.get('timestamp', '')}[/cyan]")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # sources subcommand group
 # ─────────────────────────────────────────────────────────────────────────────

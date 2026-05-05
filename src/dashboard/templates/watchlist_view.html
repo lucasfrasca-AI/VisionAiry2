@@ -11,6 +11,7 @@
     <div class="flex items-center gap-4">
       <span class="text-sm text-slate-500">{{ total_count }} companies</span>
       <span id="wl-price-status" class="text-xs text-slate-400">Loading prices…</span>
+      <button id="wl-refresh-btn" onclick="window._wlLoadPrices()" class="hidden text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded border border-indigo-200 hover:border-indigo-400 transition-colors">↺ Refresh</button>
     </div>
   </div>
 
@@ -93,32 +94,51 @@
 {% block scripts %}
 {% if sectors %}
 <script>
-(async function() {
-  const tickers = {{ sectors.keys() | list | tojson }};
-  // Build full ticker list from all sectors
+window._wlLoadPrices = async function() {
   const allTickers = [];
-  document.querySelectorAll('[data-ticker]').forEach(row => {
+  document.querySelectorAll('[data-ticker]').forEach(function(row) {
     const t = row.getAttribute('data-ticker');
     if (t) allTickers.push(t);
   });
   if (!allTickers.length) return;
 
   const statusEl = document.getElementById('wl-price-status');
+  const refreshBtn = document.getElementById('wl-refresh-btn');
+  const total = allTickers.length;
+
+  if (statusEl) statusEl.textContent = 'Loading prices…';
+  if (refreshBtn) refreshBtn.classList.add('hidden');
+
   try {
     const resp = await fetch('/api/prices', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({tickers: allTickers})
     });
-    if (!resp.ok) { if (statusEl) statusEl.textContent = ''; return; }
+    if (!resp.ok) {
+      if (statusEl) statusEl.textContent = 'Price service unavailable';
+      if (refreshBtn) refreshBtn.classList.remove('hidden');
+      return;
+    }
     const prices = await resp.json();
     let loaded = 0;
-    for (const [ticker, data] of Object.entries(prices)) {
-      if (!data) continue;
-      const priceEl = document.querySelector(`[data-live-price="${ticker}"]`);
-      const changeEl = document.querySelector(`[data-live-change="${ticker}"]`);
-      const mcapEl = document.querySelector(`[data-live-mcap="${ticker}"]`);
-      if (priceEl && data.current_price != null) {
+    let failed = 0;
+    for (const ticker of allTickers) {
+      const data = prices[ticker];
+      const priceEl = document.querySelector('[data-live-price="' + ticker + '"]');
+      const changeEl = document.querySelector('[data-live-change="' + ticker + '"]');
+      const mcapEl = document.querySelector('[data-live-mcap="' + ticker + '"]');
+
+      if (!data || data.current_price == null) {
+        // Mark as unavailable with tooltip
+        if (priceEl) { priceEl.textContent = '—'; priceEl.title = 'yfinance data unavailable for ' + ticker; }
+        if (changeEl) { changeEl.textContent = '—'; }
+        if (mcapEl) { mcapEl.textContent = '—'; }
+        failed++;
+        continue;
+      }
+
+      if (priceEl) {
         priceEl.textContent = '$' + data.current_price.toFixed(2);
         loaded++;
       }
@@ -126,21 +146,29 @@
         const pct = data.day_change_pct;
         changeEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
         changeEl.className = 'px-4 py-2.5 text-xs font-semibold ' + (pct >= 0 ? 'text-emerald-600' : 'text-rose-600');
-        // Highlight big movers
         const row = changeEl.closest('tr');
-        if (row) {
-          if (Math.abs(pct) >= 5) row.classList.add('bg-amber-50');
-        }
+        if (row && Math.abs(pct) >= 5) row.classList.add('bg-amber-50');
       }
       if (mcapEl && data.market_cap != null) {
         mcapEl.textContent = window.formatMarketCap ? window.formatMarketCap(data.market_cap) : '$' + (data.market_cap / 1e9).toFixed(1) + 'B';
       }
     }
-    if (statusEl) statusEl.textContent = loaded + ' prices loaded';
+    if (statusEl) {
+      if (failed > 0 && loaded === 0) {
+        statusEl.textContent = 'Prices unavailable';
+      } else if (failed > 0) {
+        statusEl.textContent = loaded + ' loaded, ' + failed + ' unavailable';
+      } else {
+        statusEl.textContent = loaded + ' prices loaded';
+      }
+    }
   } catch(e) {
-    if (statusEl) statusEl.textContent = '';
+    if (statusEl) statusEl.textContent = 'Price service unavailable';
   }
-})();
+  if (refreshBtn) refreshBtn.classList.remove('hidden');
+};
+
+window.addEventListener('DOMContentLoaded', function() { window._wlLoadPrices(); });
 </script>
 {% endif %}
 {% endblock %}

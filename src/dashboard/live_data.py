@@ -44,29 +44,92 @@ class LivePriceService:
                 to_fetch.append(t)
 
         if to_fetch:
-            with ThreadPoolExecutor(max_workers=10) as pool:
-                fut_map = {pool.submit(self._fetch, t): t for t in to_fetch}
-                for fut in as_completed(fut_map, timeout=30):
-                    ticker = fut_map[fut]
-                    try:
-                        snap = fut.result(timeout=10)
-                        if snap:
-                            self._cache[ticker] = (time.monotonic(), snap)
-                        fresh[ticker] = snap
-                    except Exception as exc:
-                        log.debug("live_data: %s fetch failed: %s", ticker, exc)
-                        fresh[ticker] = None
+            with ThreadPoolExecutor(max_workers=15) as pool:
+                fut_map = {pool.submit(self._fetch_fast, t): t for t in to_fetch}
+                try:
+                    for fut in as_completed(fut_map, timeout=30):
+                        ticker = fut_map[fut]
+                        try:
+                            snap = fut.result(timeout=5)
+                            if snap:
+                                self._cache[ticker] = (time.monotonic(), snap)
+                            fresh[ticker] = snap
+                        except Exception as exc:
+                            log.debug("live_data: %s fetch failed: %s", ticker, exc)
+                            fresh[ticker] = None
+                except Exception:
+                    # Timeout or other error — return what we have so far
+                    for ticker in to_fetch:
+                        if ticker not in fresh:
+                            fresh[ticker] = None
 
         return fresh
 
     # ── Internal fetch ────────────────────────────────────────────────────────
 
     def _fetch(self, ticker: str) -> dict | None:
+        """Full fetch: fast_info + t.info (ratios). Used for single-ticker detail."""
         snap = self._fetch_yfinance(ticker)
         if snap:
             return snap
         snap = self._fetch_finnhub(ticker)
         return snap
+
+    def _fetch_fast(self, ticker: str) -> dict | None:
+        """Fast fetch: fast_info only (no t.info). Used for bulk watchlist loads."""
+        snap = self._fetch_yfinance_fast(ticker)
+        if snap:
+            return snap
+        snap = self._fetch_finnhub(ticker)
+        return snap
+
+    def _fetch_yfinance_fast(self, ticker: str) -> dict | None:
+        """Fast path: uses only fast_info (one HTTP call). No ratios."""
+        try:
+            import yfinance as yf
+            t = yf.Ticker(ticker)
+            info = t.fast_info
+            current_price = getattr(info, "last_price", None) or getattr(info, "regularMarketPrice", None)
+            prev_close = getattr(info, "previous_close", None) or getattr(info, "regularMarketPreviousClose", None)
+            market_cap = getattr(info, "market_cap", None)
+            volume = getattr(info, "last_volume", None) or getattr(info, "regularMarketVolume", None)
+            week52_high = getattr(info, "year_high", None) or getattr(info, "fiftyTwoWeekHigh", None)
+            week52_low = getattr(info, "year_low", None) or getattr(info, "fiftyTwoWeekLow", None)
+
+            if current_price is None:
+                return None
+
+            day_change = (current_price - prev_close) if prev_close else None
+            day_change_pct = (day_change / prev_close * 100) if prev_close and day_change is not None else None
+            fifty_two_week_pos = None
+            if week52_high and week52_low and week52_high > week52_low:
+                fifty_two_week_pos = (current_price - week52_low) / (week52_high - week52_low)
+
+            return {
+                "ticker": ticker,
+                "current_price": float(current_price),
+                "previous_close": float(prev_close) if prev_close else None,
+                "day_change": float(day_change) if day_change is not None else None,
+                "day_change_pct": round(float(day_change_pct), 2) if day_change_pct is not None else None,
+                "day_volume": int(volume) if volume else None,
+                "average_volume": None,
+                "market_cap": float(market_cap) if market_cap else None,
+                "fifty_two_week_high": float(week52_high) if week52_high else None,
+                "fifty_two_week_low": float(week52_low) if week52_low else None,
+                "fifty_two_week_position": round(float(fifty_two_week_pos), 3) if fifty_two_week_pos is not None else None,
+                "pe_ratio": None,
+                "ps_ratio": None,
+                "dividend_yield": None,
+                "beta": None,
+                "short_interest_pct": None,
+                "insider_ownership_pct": None,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "source": "yfinance_fast",
+                "stale": False,
+            }
+        except Exception as exc:
+            log.debug("yfinance fast fetch failed for %s: %s", ticker, exc)
+            return None
 
     def _fetch_yfinance(self, ticker: str) -> dict | None:
         try:

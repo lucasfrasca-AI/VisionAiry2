@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import recommendation_badge, track_badge %}
+{% from "_macros.html" import recommendation_badge, track_badge, persona_pill %}
 
 {% block title %}VisionAiry2 — Home{% endblock %}
 
@@ -58,40 +58,81 @@
   <!-- Report cards -->
   {% if latest_reports %}
   <div>
-    <h2 class="text-base font-semibold text-slate-700 mb-3">Recent Reports</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold text-slate-700">Recent Reports</h2>
+      <div class="flex items-center gap-3 text-xs text-slate-500">
+        <label class="flex items-center gap-1.5 cursor-pointer select-none">
+          <input type="checkbox" id="triage-toggle" class="rounded" onchange="window._triageToggle(this.checked)">
+          Triage view (hide WATCHLIST/PRE-IPO)
+        </label>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="report-cards">
       {% for r in latest_reports %}
       {% if r.track == "established" %}
+        {# Visual hierarchy class based on rec/conviction #}
+        {% if r.recommendation in ['CORE', 'STARTER'] and r.conviction == 'HIGH' %}
+          {% set card_cls = "bg-white rounded-xl border-t-2 border-t-emerald-400 border-b border-l border-r border-slate-200 shadow-sm p-5 hover:shadow-md transition-all block" %}
+        {% elif r.recommendation == 'AVOID' and r.conviction == 'HIGH' %}
+          {% set card_cls = "bg-white rounded-xl border border-slate-200 border-l-4 border-l-rose-400 shadow-sm p-5 hover:shadow-md transition-all block" %}
+        {% elif r.recommendation == 'AVOID' %}
+          {% set card_cls = "bg-white rounded-xl border border-slate-200 border-l-4 border-l-rose-200 shadow-sm p-5 hover:shadow-md transition-all block" %}
+        {% else %}
+          {% set card_cls = "bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-indigo-300 hover:shadow-md transition-all block" %}
+        {% endif %}
         <a href="/reports/{{ r.identifier }}/{{ r.timestamp }}"
-           class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-indigo-400 hover:shadow-md transition-all block">
-          <div class="flex items-start justify-between">
+           class="{{ card_cls }}" data-rec="{{ r.recommendation }}" data-track="established">
+          <!-- Header -->
+          <div class="flex items-start justify-between gap-2">
             <span class="text-2xl font-bold text-slate-900">{{ r.identifier }}</span>
-            {{ track_badge(r.track) }}
+            <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+              {{ recommendation_badge(r.recommendation, r.conviction) }}
+              {{ track_badge(r.track) }}
+            </div>
           </div>
-          <div class="mt-2 flex items-center gap-3">
-            {{ recommendation_badge(r.recommendation, r.conviction) }}
-            <div data-live-price="{{ r.identifier }}" class="text-sm font-semibold text-slate-700 ml-auto">—</div>
+          <!-- Price row -->
+          <div class="mt-2 flex items-center gap-3 text-sm min-h-[1.5rem]">
+            <span class="font-semibold text-slate-800" data-live-price="{{ r.identifier }}">—</span>
+            <span class="text-xs" data-live-change="{{ r.identifier }}">—</span>
+            <span class="text-xs text-slate-400 ml-auto" data-live-mcap="{{ r.identifier }}">—</span>
           </div>
-          <div data-live-change="{{ r.identifier }}" class="mt-0.5 text-xs text-slate-400">—</div>
-          {% if r.sector_id %}<p class="mt-2 text-xs text-indigo-600 font-medium">{{ r.sector_id }}</p>{% endif %}
-          <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+          <!-- Sector + date -->
+          <div class="mt-0.5 flex items-center justify-between text-xs text-slate-400">
+            {% if r.sector_id %}<span class="text-indigo-600 font-medium">{{ r.sector_id }}</span>{% else %}<span></span>{% endif %}
             <span>{{ r.timestamp_display }}</span>
-            {% if r.cost_usd is not none %}<span>${{ "%.4f"|format(r.cost_usd) }}</span>{% endif %}
           </div>
+          <!-- 1-line thesis -->
+          {% if r.thesis %}
+          <p class="mt-2 text-xs text-slate-600 leading-relaxed line-clamp-2">{{ r.thesis }}</p>
+          {% endif %}
+          <!-- Persona pills -->
+          {% if r.persona_pills %}
+          <div class="mt-2 flex flex-wrap gap-1">
+            {% for abbrev, verdict in r.persona_pills.items() %}
+            {{ persona_pill(abbrev, verdict) }}
+            {% endfor %}
+          </div>
+          {% endif %}
         </a>
       {% else %}
         <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}"
-           class="bg-white rounded-xl border border-sky-200 shadow-sm p-5 hover:border-sky-400 hover:shadow-md transition-all block">
+           class="bg-sky-50 rounded-xl border border-sky-200 shadow-sm p-5 hover:border-sky-400 hover:shadow-md transition-all block" data-rec="{{ r.recommendation }}" data-track="emerging_pre_ipo">
+          <!-- Header -->
           <div class="flex items-start justify-between gap-2">
-            <span class="text-base font-bold text-slate-900 leading-tight">{{ r.display_name }}</span>
+            <span class="text-sm font-bold text-slate-900 leading-tight">{{ r.display_name }}</span>
             {{ track_badge(r.track) }}
           </div>
-          <div class="mt-2">{{ recommendation_badge(r.recommendation, r.conviction) }}</div>
-          {% if r.sector_id %}<p class="mt-2 text-xs text-sky-600 font-medium">{{ r.sector_id }}</p>{% endif %}
-          <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
-            <span>{{ r.timestamp_display }}</span>
-            {% if r.cost_usd is not none %}<span>${{ "%.4f"|format(r.cost_usd) }}</span>{% endif %}
+          <!-- Rec + sector -->
+          <div class="mt-2 flex items-center gap-2 flex-wrap">
+            {{ recommendation_badge(r.recommendation, r.conviction) }}
+            {% if r.sector_id %}<span class="text-xs text-sky-600 font-medium">{{ r.sector_id }}</span>{% endif %}
           </div>
+          <!-- Thesis / why surfaced -->
+          {% if r.thesis %}
+          <p class="mt-2 text-xs text-slate-500 leading-relaxed line-clamp-2">{{ r.thesis }}</p>
+          {% endif %}
+          <!-- Date -->
+          <div class="mt-2 text-xs text-slate-400">{{ r.timestamp_display }}</div>
         </a>
       {% endif %}
       {% endfor %}
@@ -130,12 +171,30 @@ window.addEventListener('DOMContentLoaded', async function() {
     document.querySelectorAll('[data-live-change="' + ticker + '"]').forEach(function(el) {
       if (data.day_change_pct != null) {
         var pct = data.day_change_pct;
-        el.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '% today';
-        el.className = (pct >= 0 ? 'text-emerald-600' : 'text-rose-600') + ' text-xs mt-0.5';
+        el.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+        el.className = 'text-xs ' + (pct >= 0 ? 'text-emerald-600' : 'text-rose-600');
+      }
+    });
+    document.querySelectorAll('[data-live-mcap="' + ticker + '"]').forEach(function(el) {
+      if (data.market_cap != null) {
+        el.textContent = window.formatMarketCap ? window.formatMarketCap(data.market_cap) : '$' + (data.market_cap / 1e9).toFixed(1) + 'B';
       }
     });
   }
 });
+
+window._triageToggle = function(hide) {
+  document.querySelectorAll('#report-cards > a').forEach(function(card) {
+    if (!hide) { card.style.display = ''; return; }
+    const rec = card.getAttribute('data-rec') || '';
+    const track = card.getAttribute('data-track') || '';
+    if (track === 'emerging_pre_ipo' || rec === 'WATCHLIST' || rec === 'INSUFFICIENT_DATA') {
+      card.style.display = 'none';
+    } else {
+      card.style.display = '';
+    }
+  });
+};
 </script>
 {% endif %}
 {% endblock %}

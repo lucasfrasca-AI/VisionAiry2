@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import recommendation_badge, track_badge %}
+{% from "_macros.html" import recommendation_badge, track_badge, persona_pill %}
 
 {% block title %}Reports — VisionAiry2{% endblock %}
 
@@ -8,6 +8,23 @@
 
   <div class="flex items-center justify-between">
     <h1 class="text-xl font-bold text-slate-900">All Reports <span class="text-slate-400 text-base font-normal">({{ total }})</span></h1>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-3 flex flex-wrap gap-5 text-sm">
+    <span class="text-slate-500">{{ total }} total</span>
+    {% if rec_counts.get('CORE', 0) + rec_counts.get('STARTER', 0) > 0 %}
+    <span class="text-emerald-700 font-medium">{{ rec_counts.get('CORE', 0) + rec_counts.get('STARTER', 0) }} BUY/STARTER</span>
+    {% endif %}
+    {% if rec_counts.get('AVOID', 0) > 0 %}
+    <span class="text-rose-700 font-medium">{{ rec_counts.get('AVOID', 0) }} AVOID</span>
+    {% endif %}
+    {% if rec_counts.get('WATCHLIST', 0) > 0 %}
+    <span class="text-amber-700">{{ rec_counts.get('WATCHLIST', 0) }} WATCHLIST</span>
+    {% endif %}
+    {% if rec_counts.get('INSUFFICIENT_DATA', 0) > 0 %}
+    <span class="text-slate-400">{{ rec_counts.get('INSUFFICIENT_DATA', 0) }} no data</span>
+    {% endif %}
   </div>
 
   <!-- Filters -->
@@ -45,38 +62,86 @@
   <!-- Table -->
   {% if reports %}
   <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-    <table class="w-full text-sm">
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm min-w-[900px]">
       <thead class="bg-slate-50 border-b border-slate-200">
         <tr>
           <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Track</th>
           <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Name</th>
           <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Sector</th>
           <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Recommendation</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Price</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Day %</th>
+          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Mkt Cap</th>
           <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Generated</th>
-          <th class="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Cost</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-100">
+      <tbody class="divide-y divide-slate-100" id="reports-tbody">
         {% for r in reports %}
-        <tr class="hover:bg-slate-50 transition-colors">
+        {# Row tint by recommendation #}
+        {% if r.recommendation in ['CORE', 'STARTER'] and r.conviction == 'HIGH' %}
+          {% set row_cls = "hover:bg-emerald-50 transition-colors cursor-pointer" %}
+        {% elif r.recommendation == 'AVOID' and r.conviction == 'HIGH' %}
+          {% set row_cls = "hover:bg-rose-50 transition-colors cursor-pointer" %}
+        {% elif r.track == 'emerging_pre_ipo' %}
+          {% set row_cls = "hover:bg-sky-50 transition-colors cursor-pointer" %}
+        {% else %}
+          {% set row_cls = "hover:bg-slate-50 transition-colors cursor-pointer" %}
+        {% endif %}
+        <tr class="{{ row_cls }}" onclick="window._toggleExpand('{{ r.identifier }}-{{ r.timestamp }}')">
           <td class="px-4 py-3">{{ track_badge(r.track) }}</td>
-          <td class="px-4 py-3 font-medium text-slate-900">{{ r.display_name }}</td>
+          <td class="px-4 py-3 font-medium text-slate-900">
+            {% if r.track == "established" %}
+              <span class="font-mono font-bold text-indigo-700">{{ r.identifier }}</span>
+            {% else %}
+              <span class="text-slate-800">{{ r.display_name }}</span>
+            {% endif %}
+          </td>
           <td class="px-4 py-3 text-xs text-slate-500">{{ r.sector_id or "—" }}</td>
           <td class="px-4 py-3">{{ recommendation_badge(r.recommendation, r.conviction) }}</td>
+          <td class="px-4 py-3 text-xs font-semibold text-slate-700"
+            {% if r.track == 'established' %}data-list-price="{{ r.identifier }}"{% endif %}>—</td>
+          <td class="px-4 py-3 text-xs"
+            {% if r.track == 'established' %}data-list-change="{{ r.identifier }}"{% endif %}>—</td>
+          <td class="px-4 py-3 text-xs text-slate-500"
+            {% if r.track == 'established' %}data-list-mcap="{{ r.identifier }}"{% endif %}>—</td>
           <td class="px-4 py-3 text-xs text-slate-400">{{ r.timestamp_display }}</td>
-          <td class="px-4 py-3 text-xs text-slate-400">{% if r.cost_usd is not none %}${{ "%.4f"|format(r.cost_usd) }}{% else %}—{% endif %}</td>
-          <td class="px-4 py-3">
+          <td class="px-4 py-3" onclick="event.stopPropagation()">
             {% if r.track == "established" %}
-              <a href="/reports/{{ r.identifier }}/{{ r.timestamp }}" class="text-indigo-600 hover:text-indigo-800 text-xs font-medium">View →</a>
+              <a href="/reports/{{ r.identifier }}/{{ r.timestamp }}" class="text-indigo-600 hover:text-indigo-800 text-xs font-medium whitespace-nowrap">View →</a>
             {% else %}
-              <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}" class="text-sky-600 hover:text-sky-800 text-xs font-medium">View →</a>
+              <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}" class="text-sky-600 hover:text-sky-800 text-xs font-medium whitespace-nowrap">View →</a>
             {% endif %}
+          </td>
+        </tr>
+        <!-- Expandable detail row -->
+        <tr id="expand-{{ r.identifier }}-{{ r.timestamp }}" class="hidden bg-slate-50">
+          <td colspan="9" class="px-6 py-3 border-b border-slate-100">
+            {% if r.thesis %}
+            <p class="text-xs text-slate-700 mb-2">{{ r.thesis }}</p>
+            {% endif %}
+            {% if r.persona_pills %}
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              {% for abbrev, verdict in r.persona_pills.items() %}
+              {{ persona_pill(abbrev, verdict) }}
+              {% endfor %}
+            </div>
+            {% endif %}
+            <div class="flex gap-3 text-xs">
+              {% if r.track == "established" %}
+                <a href="/reports/{{ r.identifier }}/{{ r.timestamp }}" class="text-indigo-600 hover:text-indigo-800 font-medium">Open full report →</a>
+              {% else %}
+                <a href="/reports/emerging/{{ r.identifier }}/{{ r.timestamp }}" class="text-sky-600 hover:text-sky-800 font-medium">Open full report →</a>
+              {% endif %}
+              {% if r.cost_usd is not none %}<span class="text-slate-400">Cost: ${{ "%.4f"|format(r.cost_usd) }}</span>{% endif %}
+            </div>
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 
   <!-- Pagination -->
@@ -96,4 +161,52 @@
   {% endif %}
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% set established_in_list = reports | selectattr('track', 'equalto', 'established') | list %}
+{% if established_in_list %}
+<script>
+window._toggleExpand = function(id) {
+  var el = document.getElementById('expand-' + id);
+  if (el) el.classList.toggle('hidden');
+};
+
+window.addEventListener('DOMContentLoaded', async function() {
+  const tickers = [];
+  document.querySelectorAll('[data-list-price]').forEach(function(el) {
+    const t = el.getAttribute('data-list-price');
+    if (t && tickers.indexOf(t) === -1) tickers.push(t);
+  });
+  if (!tickers.length) return;
+
+  const prices = await loadPriceBulk(tickers);
+  for (const [ticker, data] of Object.entries(prices)) {
+    if (!data) continue;
+    document.querySelectorAll('[data-list-price="' + ticker + '"]').forEach(function(el) {
+      if (data.current_price != null) el.textContent = '$' + data.current_price.toFixed(2);
+    });
+    document.querySelectorAll('[data-list-change="' + ticker + '"]').forEach(function(el) {
+      if (data.day_change_pct != null) {
+        var pct = data.day_change_pct;
+        el.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+        el.className = 'px-4 py-3 text-xs font-semibold ' + (pct >= 0 ? 'text-emerald-600' : 'text-rose-600');
+      }
+    });
+    document.querySelectorAll('[data-list-mcap="' + ticker + '"]').forEach(function(el) {
+      if (data.market_cap != null) {
+        el.textContent = window.formatMarketCap ? window.formatMarketCap(data.market_cap) : '$' + (data.market_cap / 1e9).toFixed(1) + 'B';
+      }
+    });
+  }
+});
+</script>
+{% else %}
+<script>
+window._toggleExpand = function(id) {
+  var el = document.getElementById('expand-' + id);
+  if (el) el.classList.toggle('hidden');
+};
+</script>
+{% endif %}
 {% endblock %}

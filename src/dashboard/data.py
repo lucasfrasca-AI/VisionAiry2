@@ -140,6 +140,8 @@ def list_reports(track: str | None = None) -> list[dict]:
                         "cost_usd": cost_data.get("total_usd"),
                         "sector_id": sector,
                         "size_bytes": _dir_size(ts_dir),
+                        "thesis": _extract_thesis(md_text),
+                        "persona_pills": _extract_personas_from_md(md_text),
                     })
 
     if track in (None, "emerging_pre_ipo"):
@@ -171,6 +173,8 @@ def list_reports(track: str | None = None) -> list[dict]:
                         "cost_usd": cost_data.get("total_usd"),
                         "sector_id": sector,
                         "size_bytes": _dir_size(ts_dir),
+                        "thesis": _extract_why_surfaced(md_text) or _extract_thesis(md_text),
+                        "persona_pills": _extract_personas_from_md(md_text),
                     })
 
     results.sort(key=lambda r: r["timestamp"], reverse=True)
@@ -306,6 +310,62 @@ def _extract_quant_data(data: dict) -> dict | None:
     }
 
 
+_PERSONA_ABBREVS: dict[str, str] = {
+    "wood": "W", "cathie": "W",
+    "druckenmiller": "D", "stan": "D",
+    "burry": "B", "michael": "B",
+    "lynch": "L", "peter": "L",
+}
+
+
+def _extract_thesis(md_text: str) -> str | None:
+    """Return first meaningful sentence from the Executive Summary section (≤160 chars)."""
+    in_section = False
+    for line in md_text.splitlines():
+        if re.match(r"^## \d*\.?\s*Executive Summary", line, re.IGNORECASE):
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith("#"):
+                break
+            stripped = line.strip()
+            if stripped and not stripped.startswith(">") and not stripped.startswith("**Generated") and len(stripped) > 20:
+                first = re.split(r"\.\s+", stripped)[0].rstrip(".").strip()
+                if len(first) > 20:
+                    return (first[:157] + "…") if len(first) > 157 else first
+    return None
+
+
+def _extract_why_surfaced(md_text: str) -> str | None:
+    """Extract first sentence from 'Why It Surfaced' section for pre-IPO cards."""
+    in_section = False
+    for line in md_text.splitlines():
+        if re.match(r"^## \d*\.?\s*Why It Surfaced", line, re.IGNORECASE):
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith("#"):
+                break
+            stripped = line.strip()
+            if stripped and not stripped.startswith(">") and len(stripped) > 15:
+                first = re.split(r"\.\s+", stripped)[0].rstrip(".").strip()
+                return (first[:157] + "…") if len(first) > 157 else first
+    return None
+
+
+def _extract_personas_from_md(md_text: str) -> dict[str, str]:
+    """Parse persona verdicts from '### PersonaName — VERDICT' headers in the debate section."""
+    verdicts: dict[str, str] = {}
+    for match in re.finditer(r"^### ([\w][\w\s]*?) — ([A-Z_]+)", md_text, re.MULTILINE):
+        name_raw = match.group(1).lower()
+        verdict = match.group(2)
+        for key, abbrev in _PERSONA_ABBREVS.items():
+            if key in name_raw and abbrev not in verdicts:
+                verdicts[abbrev] = verdict
+                break
+    return verdicts
+
+
 def _extract_persona_verdicts(reasoning: dict[str, str]) -> dict[str, str]:
     """Extract final verdict strings from persona reasoning trace files."""
     verdicts = {}
@@ -358,6 +418,40 @@ def get_brief(date: str) -> dict | None:
         return None
     text = path.read_text()
     return {"date": date, "markdown": text, "html": markdown_to_html(text)}
+
+
+def extract_referenced_tickers(brief_markdown: str) -> list[str]:
+    """Extract tickers from brief markdown by matching against watchlist + known report dirs.
+
+    Strict: only returns strings that are real, known tickers — filters out prose noise like
+    AVOID, HIGH, CUDA, FDA, AI, EV, etc.
+    """
+    # Build known-ticker set from config watchlist
+    known: set[str] = set()
+    try:
+        from src.config import get_config
+        cfg = get_config()
+        for entries in (cfg.watchlist or {}).values():
+            for e in entries:
+                t = e.ticker if hasattr(e, "ticker") else (e.get("ticker", "") if isinstance(e, dict) else "")
+                if t:
+                    known.add(t)
+    except Exception:
+        pass
+
+    # Add tickers from reports/ directory (covers analyse-ticker one-off reports)
+    if _REPORTS_ROOT.exists():
+        for d in _REPORTS_ROOT.iterdir():
+            if d.is_dir() and not d.name.startswith("_") and _REAL_TICKER_RE.match(d.name):
+                known.add(d.name)
+
+    if not known:
+        return []
+
+    # Find 2-5 char uppercase candidates in the markdown
+    candidates = set(re.findall(r'\b([A-Z]{2,5})\b', brief_markdown))
+    matched = sorted(candidates & known)
+    return matched
 
 
 # ── Sources ───────────────────────────────────────────────────────────────────

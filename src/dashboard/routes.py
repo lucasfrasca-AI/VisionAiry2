@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import Request, Form
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from src.dashboard.app import app, templates
@@ -91,6 +93,11 @@ async def reports_list(request: Request, track: str = "", sector: str = "", rec:
     total_pages = max(1, (total + per_page - 1) // per_page)
     sectors = sorted({r.get("sector_id", "") for r in all_reports if r.get("sector_id")})
 
+    rec_counts: dict[str, int] = {}
+    for r in filtered:
+        k = (r.get("recommendation") or "UNKNOWN").upper()
+        rec_counts[k] = rec_counts.get(k, 0) + 1
+
     return templates.TemplateResponse(request, "reports_list.html", context={
         "active_page": "reports",
         "reports": paginated,
@@ -102,6 +109,7 @@ async def reports_list(request: Request, track: str = "", sector: str = "", rec:
         "filter_rec": rec,
         "sectors": sectors,
         "recs": ["CORE", "STARTER", "WATCHLIST", "AVOID", "INSUFFICIENT_DATA"],
+        "rec_counts": rec_counts,
         **_nav_counts(),
     })
 
@@ -173,11 +181,11 @@ async def digest_view(request: Request, date: str):
     brief = _data.get_brief(date)
     if brief is None:
         return _404(request)
-    tickers = list(dict.fromkeys(re.findall(r'\b([A-Z]{1,5})\b', brief["markdown"])))
+    referenced_tickers = _data.extract_referenced_tickers(brief["markdown"])
     return templates.TemplateResponse(request, "digest_view.html", context={
         "active_page": "digest",
         "brief": brief,
-        "referenced_tickers": tickers[:20],
+        "referenced_tickers": referenced_tickers[:20],
         **_nav_counts(),
     })
 
@@ -216,13 +224,168 @@ class _BulkRequest(BaseModel):
 
 
 @app.post("/api/prices")
-async def api_prices_bulk(body: _BulkRequest):
+def api_prices_bulk(body: _BulkRequest):
     tickers = [t for t in body.tickers if _data.validate_identifier(t, "established")][:100]
     if not tickers:
         return JSONResponse({})
     from src.dashboard.live_data import live_price_service
-    results = live_price_service.get_snapshots_bulk(tickers)
-    return JSONResponse({k: v for k, v in results.items()})
+    try:
+        results = live_price_service.get_snapshots_bulk(tickers)
+        return JSONResponse({k: v for k, v in results.items() if v is not None})
+    except Exception:
+        return JSONResponse({}, status_code=200)
+
+
+# ── On-demand analysis ────────────────────────────────────────────────────────
+
+_TICKER_RE = re.compile(r"^[A-Z]{1,5}(\.[A-Z]+)?$")
+_REPORTS_ROOT = _ROOT / "reports"
+
+
+def _sector_ids() -> list[str]:
+    try:
+        from src.config import get_config
+        cfg = get_config()
+        return [s.id for s in cfg.sectors]
+    except Exception:
+        return []
+
+
+@app.get("/analyse", response_class=HTMLResponse)
+async def analyse_form(request: Request):
+    return templates.TemplateResponse(request, "analyse_form.html", context={
+        "active_page": "analyse",
+        "sectors": _sector_ids(),
+        "error": None,
+        "submitted_ticker": None,
+        **_nav_counts(),
+    })
+
+
+@app.post("/analyse", response_class=HTMLResponse)
+async def analyse_submit(
+    request: Request,
+    ticker: str = Form(...),
+    depth: str = Form("full"),
+    sector: str = Form(""),
+):
+    ticker = ticker.upper().strip()
+
+    if not _TICKER_RE.match(ticker):
+        return templates.TemplateResponse(request, "analyse_form.html", context={
+            "active_page": "analyse",
+            "sectors": _sector_ids(),
+            "error": f"Invalid ticker format: {ticker!r}. Must be 1–5 uppercase letters.",
+            "submitted_ticker": ticker,
+            **_nav_counts(),
+        })
+    if depth not in ("full", "lite"):
+        depth = "full"
+
+    # Resolve sector
+    sector_id = sector or None
+    if not sector_id:
+        try:
+            from src.config import get_config
+            cfg = get_config()
+            for wl_sector, entries in (cfg.watchlist or {}).items():
+                for e in entries:
+                    t = e.ticker if hasattr(e, "ticker") else (e.get("ticker", "") if isinstance(e, dict) else "")
+                    if t == ticker:
+                        sector_id = wl_sector
+                        break
+                if sector_id:
+                    break
+            if not sector_id and cfg.sectors:
+                sector_id = cfg.sectors[0].id
+        except Exception:
+            sector_id = "ai_chips_compute"
+
+    # Expected timestamp prefix (first 8 chars = date) — we'll check for any ts today
+    now_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    today_prefix = now_ts[:8]  # e.g. "20260505"
+
+    # Spawn background subprocess (non-blocking)
+    import shutil
+    log_path = Path("/tmp") / f"visionairy2_analyse_{ticker}_{now_ts}.log"
+    uv_path = shutil.which("uv")
+    try:
+        with open(log_path, "w") as log_file:
+            if uv_path:
+                cmd = [uv_path, "run", "visionairy2", "analyse-ticker", ticker,
+                       "--depth", depth, "--sector", sector_id]
+            else:
+                root_str = str(_ROOT)
+                cmd = [
+                    sys.executable, "-c",
+                    f"import sys; sys.path.insert(0,{root_str!r}); from src.cli import app; "
+                    f"sys.argv=['visionairy2','analyse-ticker',{ticker!r},'--depth',{depth!r},'--sector',{sector_id!r}]; app()",
+                ]
+            subprocess.Popen(cmd, stdout=log_file, stderr=log_file, cwd=str(_ROOT))
+    except Exception as exc:
+        return templates.TemplateResponse(request, "analyse_form.html", context={
+            "active_page": "analyse",
+            "sectors": _sector_ids(),
+            "error": f"Failed to start analysis process: {exc}",
+            "submitted_ticker": ticker,
+            **_nav_counts(),
+        })
+
+    return RedirectResponse(
+        f"/analyse/status/{ticker}?depth={depth}&sector_id={sector_id}&started={now_ts}&today={today_prefix}",
+        status_code=303,
+    )
+
+
+@app.get("/analyse/status/{ticker}", response_class=HTMLResponse)
+async def analyse_status(
+    request: Request,
+    ticker: str,
+    depth: str = "full",
+    sector_id: str = "",
+    started: str = "",
+    today: str = "",
+):
+    if not _TICKER_RE.match(ticker):
+        return _404(request)
+
+    # Check if report exists: look for any ts_dir created today for this ticker
+    ticker_dir = _REPORTS_ROOT / ticker
+    found_ts: Optional[str] = None
+    if ticker_dir.exists():
+        # Most recent ts_dir for this ticker that starts with today's date prefix
+        for ts_dir in sorted(ticker_dir.iterdir(), reverse=True):
+            if not ts_dir.is_dir():
+                continue
+            ts_name = ts_dir.name
+            if today and not ts_name.startswith(today):
+                continue
+            report_md = ts_dir / "report.md"
+            data_json = ts_dir / "data.json"
+            if report_md.exists() and data_json.exists():
+                found_ts = ts_name
+                break
+
+    started_display = ""
+    if started:
+        try:
+            dt = datetime.strptime(started, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+            started_display = dt.strftime("%H:%M:%S UTC")
+        except Exception:
+            started_display = started
+
+    return templates.TemplateResponse(request, "analyse_status.html", context={
+        "active_page": "analyse",
+        "ticker": ticker,
+        "depth": depth,
+        "sector_id": sector_id or "auto",
+        "started_at": started_display,
+        "expected_ts": today + "T*",
+        "done": found_ts is not None,
+        "timestamp": found_ts or "",
+        "error": None,
+        **_nav_counts(),
+    })
 
 
 # ── Watchlist ─────────────────────────────────────────────────────────────────
