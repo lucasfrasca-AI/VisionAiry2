@@ -170,7 +170,22 @@ def run_discovery(
         except Exception as exc:
             log.warning("Established scoring failed for %s: %s", ticker, exc)
 
-    seen_tickers: set[str] = set()  # could be populated from DB history
+    # Populate seen slugs from pre-IPO report dirs so novelty bonus is accurate
+    _pre_ipo_root = Path("reports/_emerging_pre_ipo_")
+    seen_tickers: set[str] = set()
+    if _pre_ipo_root.exists():
+        for _slug_dir in _pre_ipo_root.iterdir():
+            if _slug_dir.is_dir():
+                seen_tickers.add(_slug_dir.name)
+
+    # Collect watchlist tickers for the subsidiary filter
+    _watchlist_tickers: set[str] = set()
+    for _entries in (cfg.watchlist or {}).values():
+        for _e in _entries:
+            _t = _e.ticker if hasattr(_e, "ticker") else (_e.get("ticker", "") if isinstance(_e, dict) else "")
+            if _t and len(_t) >= 3:
+                _watchlist_tickers.add(_t)
+
     emerging_scores: list[dict] = []
     for c in emerging_candidates:
         ticker = c.get("ticker", "")
@@ -183,6 +198,12 @@ def run_discovery(
         except Exception as exc:
             log.warning("Emerging scoring failed for %s: %s", ticker, exc)
 
+    # Apply pre-IPO confidence gate: name filter + subsidiary filter + threshold
+    emerging_scores, _dropped_emerging = scorer.filter_emerging_pre_ipo(
+        emerging_scores, _watchlist_tickers, seen_tickers, _emit
+    )
+    n_em_dropped = len(_dropped_emerging)
+
     two_track = scorer.rank_two_tracks(
         established_scores, emerging_scores, n_established=n_est, n_emerging=n_em
     )
@@ -190,7 +211,10 @@ def run_discovery(
     top_emerging = [r["company_id"] for r in two_track["emerging"]]
     top_candidates = top_established + top_emerging
 
-    _phase(f"Phase 5/8: Done — {len(top_established)} established, {len(top_emerging)} emerging selected")
+    _phase(
+        f"Phase 5/8: Done — {len(top_established)} established, {len(top_emerging)} emerging selected"
+        + (f", {n_em_dropped} below-threshold dropped" if n_em_dropped else "")
+    )
     _emit(f"[discover] Established candidates: {top_established}")
     _emit(f"[discover] Emerging candidates:    {top_emerging}")
     _emit(f"[discover] Split stats: {two_track['split_stats']}")

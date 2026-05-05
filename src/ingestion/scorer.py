@@ -1,5 +1,6 @@
 from __future__ import annotations
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -46,6 +47,19 @@ _SOURCE_TIER: dict[str, float] = {
     "fmp": 6.0,
 }
 _DEFAULT_TIER = 4.0
+
+EMERGING_CONFIDENCE_THRESHOLD: float = 8.0
+
+
+def _slugify(name: str) -> str:
+    slug = name.lower()
+    slug = re.sub(r'[^a-z0-9-]+', '-', slug)
+    slug = re.sub(r'-+', '-', slug).strip('-')
+    return slug[:60]
+
+
+def _alphanumeric_count(name: str) -> int:
+    return sum(1 for c in name if c.isalnum())
 
 
 class InterestingnessScorer:
@@ -299,7 +313,7 @@ class InterestingnessScorer:
         if config and hasattr(config, "sectors"):
             sector_match = len(config.sectors) > 0
 
-        is_first_appearance = seen_tickers is not None and company_id not in seen_tickers
+        is_first_appearance = seen_tickers is not None and _slugify(company_id) not in seen_tickers
         novelty_bonus = 5.0 if (is_first_appearance and novelty_recent) else 0.0
         emerging_signal_count = min(len(emerging_sources) * 2.0, 10.0)
         government_validation = (5.0 if has_sbir_phase2 else 0.0) + (3.0 if has_nsf_award else 0.0)
@@ -335,6 +349,63 @@ class InterestingnessScorer:
                 "sector_match": sector_match,
             },
         }
+
+    def filter_emerging_pre_ipo(
+        self,
+        scored_candidates: list[dict],
+        watchlist_tickers: set[str],
+        seen_slugs: set[str],
+        emit_fn=None,
+    ) -> tuple[list[dict], list[dict]]:
+        """Three-layer gate for emerging/pre-IPO candidates. Returns (kept, dropped).
+
+        Layer 1: Name filter — drop if < 8 alphanumeric chars ("S C S", "P", "E").
+        Layer 2: Subsidiary filter — drop if name contains any watchlist ticker (>= 3 chars)
+                 as a word boundary ("BAE Systems Space & Mission Systems Inc").
+        Layer 3: Confidence threshold — drop if score < EMERGING_CONFIDENCE_THRESHOLD.
+        """
+        kept: list[dict] = []
+        dropped: list[dict] = []
+
+        for c in scored_candidates:
+            name = c.get("company_id", "")
+            score = c.get("score", 0.0)
+
+            # Layer 1: name too short
+            alnum_len = _alphanumeric_count(name)
+            if alnum_len < 8:
+                reason = f"name too short ({alnum_len} alphanumeric chars)"
+                if emit_fn:
+                    emit_fn(f"[discover] Pre-IPO candidate {name!r} dropped: {reason} (score={score:.1f})")
+                dropped.append({**c, "_drop_reason": reason})
+                continue
+
+            # Layer 2: subsidiary/brand of a known watchlist company
+            matched_ticker = None
+            for ticker in watchlist_tickers:
+                if len(ticker) < 3:
+                    continue
+                if re.search(r'\b' + re.escape(ticker) + r'\b', name, re.IGNORECASE):
+                    matched_ticker = ticker
+                    break
+            if matched_ticker:
+                reason = f"subsidiary/brand of {matched_ticker}"
+                if emit_fn:
+                    emit_fn(f"[discover] Pre-IPO candidate {name!r} dropped: {reason} (score={score:.1f})")
+                dropped.append({**c, "_drop_reason": reason})
+                continue
+
+            # Layer 3: confidence threshold
+            if score < EMERGING_CONFIDENCE_THRESHOLD:
+                reason = f"below threshold ({score:.1f} < {EMERGING_CONFIDENCE_THRESHOLD})"
+                if emit_fn:
+                    emit_fn(f"[discover] Pre-IPO candidate {name!r} dropped: {reason} (score={score:.1f})")
+                dropped.append({**c, "_drop_reason": reason})
+                continue
+
+            kept.append(c)
+
+        return kept, dropped
 
     def rank_two_tracks(
         self,
