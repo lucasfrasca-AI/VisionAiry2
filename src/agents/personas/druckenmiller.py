@@ -11,11 +11,11 @@ from src.agents.base import AgentInput, AgentOutput, BaseAgent
 _SCHEMA = {
     "verdict": "FULL_SIZE | STARTER | MONITOR | AVOID | INSUFFICIENT_DATA",
     "confidence": "0.0-1.0",
-    "macro_setup": "str",
+    "macro_setup": "2 sentences max, 200 chars total",
     "asymmetry_ratio": "float, estimated upside/downside",
-    "primary_catalyst": "str",
-    "thesis_break_event": "str",
-    "key_evidence": [{"claim": "str", "source_ref": "e.g. news_recent[2]"}],
+    "primary_catalyst": "1 sentence, 150 chars max",
+    "thesis_break_event": "1 sentence, 150 chars max",
+    "key_evidence": [{"claim": "1 sentence, 150 chars max", "source_ref": "e.g. news_recent[2]"}],
     "time_horizon_months": "int, typically 6-18",
     "data_richness": "rich | moderate | thin | minimal",
 }
@@ -46,6 +46,13 @@ Thin-data guidance (emerging and small-cap companies):
 - For pre-revenue or pre-product companies, asymmetry cannot be calculated — return INSUFFICIENT_DATA rather than fabricating ratios.
 - Where financials are absent, focus on: government validation signals (SBIR, NSF), IPO filing activity, and specific named milestones that would shift the macro/risk picture.
 - MONITOR is the correct verdict for genuinely promising emerging names where the thesis exists but evidence is insufficient to size. Set data_richness accordingly.
+
+OUTPUT CONSTRAINTS (hard limits — truncate rather than exceed):
+- macro_setup: 2 sentences max, 200 chars total
+- primary_catalyst: 1 sentence, 150 chars max
+- thesis_break_event: 1 sentence, 150 chars max
+- key_evidence: 3 items max; each claim is 1 sentence, 150 chars max
+- PROSE STYLE: No paragraphs. One sentence per field. Drop any point you cannot make in one sentence.
 
 Return ONLY a single JSON object matching the schema. No preamble, no markdown fences, no explanation outside JSON.
 

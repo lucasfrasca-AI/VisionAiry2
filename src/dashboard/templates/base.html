@@ -15,6 +15,10 @@
     /* Scrollable table container (injected by markdown_to_html) */
     .table-scroll-wrap { overflow-x: auto; margin: 1rem 0; }
     .table-scroll-wrap table { min-width: 600px; }
+    /* Risk inventory column caps — prevent description/evidence/mitigant from bloating */
+    .prose td:nth-child(3) { max-width: 280px; word-wrap: break-word; }
+    .prose td:nth-child(4) { max-width: 220px; word-wrap: break-word; }
+    .prose td:nth-child(5) { max-width: 220px; word-wrap: break-word; }
   </style>
   {% block auto_refresh %}{% endblock %}
 </head>

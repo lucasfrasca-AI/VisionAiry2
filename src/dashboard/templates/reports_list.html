@@ -186,7 +186,7 @@ window._toggleExpand = function(id) {
 
 {% set established_in_list = reports | selectattr('track', 'equalto', 'established') | list %}
 {% if established_in_list %}
-window.addEventListener('DOMContentLoaded', async function() {
+async function _loadListPrices() {
   var tickers = [];
   document.querySelectorAll('[data-list-price]').forEach(function(el) {
     var t = el.getAttribute('data-list-price');
@@ -214,7 +214,9 @@ window.addEventListener('DOMContentLoaded', async function() {
       }
     });
   }
-});
+}
+window._refreshPrices = _loadListPrices;
+window.addEventListener('DOMContentLoaded', _loadListPrices);
 {% endif %}
 </script>
 {% endblock %}

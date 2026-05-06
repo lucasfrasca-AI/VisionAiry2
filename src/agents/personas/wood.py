@@ -11,11 +11,11 @@ from src.agents.base import AgentInput, AgentOutput, BaseAgent
 _SCHEMA = {
     "verdict": "STRONG_CONVICTION | MODERATE_CONVICTION | MONITOR | PASS | INSUFFICIENT_DATA",
     "confidence": "0.0-1.0",
-    "thesis_summary": "3 sentences max",
+    "thesis_summary": "3 sentences max, 250 chars total",
     "innovation_score": "int 0-10",
-    "tam_growth_view": "str",
-    "key_evidence": [{"claim": "str", "source_ref": "e.g. filings_recent[0]"}],
-    "what_would_change_my_mind": "str",
+    "tam_growth_view": "1 sentence, 150 chars max",
+    "key_evidence": [{"claim": "1 sentence, 150 chars max", "source_ref": "e.g. filings_recent[0]"}],
+    "what_would_change_my_mind": "1 sentence, 150 chars max",
     "time_horizon_months": "int, typically 24-60",
     "data_richness": "rich | moderate | thin | minimal",
 }
@@ -49,7 +49,14 @@ Thin-data guidance (emerging and small-cap companies):
 - For genuinely promising emerging companies with thin data, MONITOR or WATCHLIST is often the correct verdict — not STRONG_CONVICTION or PASS. Both extremes are usually unjustified without sufficient evidence.
 - Set data_richness to "thin" or "minimal" when fundamentals are sparse; this field is mandatory.
 
-You return ONLY a single JSON object matching the schema below — no preamble, no markdown fences, no explanation outside the JSON.
+OUTPUT CONSTRAINTS (hard limits — truncate rather than exceed):
+- thesis_summary: 3 sentences max, 250 chars total
+- tam_growth_view: 1 sentence, 150 chars max
+- key_evidence: 3 items max; each claim is 1 sentence, 150 chars max
+- what_would_change_my_mind: 1 sentence, 150 chars max
+- PROSE STYLE: No paragraphs. One sentence per field. If you cannot make the point in one sentence, drop it.
+
+Return ONLY a single JSON object matching the schema. No preamble, no markdown fences, no explanation outside JSON.
 
 Schema:
 """ + json.dumps(_SCHEMA, indent=2) + """

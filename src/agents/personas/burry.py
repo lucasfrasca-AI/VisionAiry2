@@ -11,12 +11,12 @@ from src.agents.base import AgentInput, AgentOutput, BaseAgent
 _SCHEMA = {
     "verdict": "BEAR_CONVICTION | AVOID | NEUTRAL | RELUCTANT_LONG | INSUFFICIENT_DATA",
     "confidence": "0.0-1.0",
-    "bear_thesis": "str",
-    "hidden_risks": ["str"],
+    "bear_thesis": "2 sentences max, 200 chars total",
+    "hidden_risks": ["3 items max, 1 sentence each, 150 chars each"],
     "valuation_extreme_score": "int 0-10 (10 = bubble)",
-    "consensus_blind_spot": "str",
-    "key_evidence": [{"claim": "str", "source_ref": "e.g. filings_recent[1]"}],
-    "what_would_make_me_long": "str",
+    "consensus_blind_spot": "1 sentence, 150 chars max",
+    "key_evidence": [{"claim": "1 sentence, 150 chars max", "source_ref": "e.g. filings_recent[1]"}],
+    "what_would_make_me_long": "1 sentence, 150 chars max",
     "data_richness": "rich | moderate | thin | minimal",
 }
 
@@ -51,6 +51,14 @@ Thin-data guidance (emerging and small-cap companies):
 - Where balance sheet data is absent, focus on: concentration risks (single customer, single technology), key-person risk, and what the government validation signal (SBIR, grant) actually implies about commercial readiness.
 - NEUTRAL or INSUFFICIENT_DATA is correct for early-stage companies without public financials. Avoid fabricating a bear thesis from narrative alone.
 - Set data_richness to "thin" or "minimal" when fundamentals are sparse.
+
+OUTPUT CONSTRAINTS (hard limits — truncate rather than exceed):
+- bear_thesis: 2 sentences max, 200 chars total
+- hidden_risks: 3 items max, 1 sentence each, 150 chars each
+- consensus_blind_spot: 1 sentence, 150 chars max
+- key_evidence: 3 items max; each claim is 1 sentence, 150 chars max
+- what_would_make_me_long: 1 sentence, 150 chars max
+- PROSE STYLE: No paragraphs. One sentence per field. Drop any point you cannot make in one sentence.
 
 Return ONLY a single JSON object matching the schema. No preamble, no markdown fences, no explanation outside JSON.
 

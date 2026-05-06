@@ -12,6 +12,12 @@ from typing import Any, Optional
 
 _REAL_TICKER_RE = re.compile(r'^[A-Z]{1,5}(\.[A-Z]+)?$')
 
+_FOREIGN_SUFFIXES: dict[str, str] = {
+    ".AX": "ASX", ".L": "LSE", ".TO": "TSX", ".HK": "HKEX",
+    ".NS": "NSE", ".PA": "Euronext Paris", ".DE": "XETRA",
+    ".SS": "Shanghai", ".T": "TSE",
+}
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 CONTEXT_CACHE_DIR = ROOT / "data" / "raw" / "agent_context"
 CONTEXT_TTL = 4 * 3600
@@ -66,22 +72,50 @@ class AgentContextBuilder:
         deduper = Deduper()
 
         # ── fundamentals ──────────────────────────────────────────────────
-        for src_id in ["findata", "alpha_vantage"]:
-            try:
-                client = get_client(src_id, config=None, db_session_factory=self._db)
-                if not client.is_available():
-                    completeness[src_id] = "unavailable"
-                    continue
-                q = SourceQuery(ticker=ticker, limit=5)
-                result = client.fetch(q)
-                if result.documents:
-                    ctx["fundamentals"] = result.documents[0].raw_payload
-                    completeness[src_id] = f"{len(result.documents)} docs"
-                    break
-                else:
-                    completeness[src_id] = "empty"
-            except Exception as exc:
-                completeness[src_id] = f"error: {exc}"
+        ctx["is_foreign_ticker"] = is_foreign_ticker(ticker)
+        ctx["exchange_label"] = exchange_label_for(ticker) if ctx["is_foreign_ticker"] else ""
+
+        if ctx["is_foreign_ticker"]:
+            # Foreign tickers: try yfinance first (better coverage), AV second
+            yf_data = _yfinance_fundamentals(ticker)
+            if yf_data:
+                ctx["fundamentals"] = yf_data
+                completeness["yfinance_fundamentals"] = "ok"
+            else:
+                completeness["yfinance_fundamentals"] = "empty"
+                for src_id in ["findata", "alpha_vantage"]:
+                    try:
+                        client = get_client(src_id, config=None, db_session_factory=self._db)
+                        if not client.is_available():
+                            completeness[src_id] = "unavailable"
+                            continue
+                        q = SourceQuery(ticker=ticker, limit=5)
+                        result = client.fetch(q)
+                        if result.documents:
+                            ctx["fundamentals"] = result.documents[0].raw_payload
+                            completeness[src_id] = f"{len(result.documents)} docs"
+                            break
+                        else:
+                            completeness[src_id] = "empty"
+                    except Exception as exc:
+                        completeness[src_id] = f"error: {exc}"
+        else:
+            for src_id in ["findata", "alpha_vantage"]:
+                try:
+                    client = get_client(src_id, config=None, db_session_factory=self._db)
+                    if not client.is_available():
+                        completeness[src_id] = "unavailable"
+                        continue
+                    q = SourceQuery(ticker=ticker, limit=5)
+                    result = client.fetch(q)
+                    if result.documents:
+                        ctx["fundamentals"] = result.documents[0].raw_payload
+                        completeness[src_id] = f"{len(result.documents)} docs"
+                        break
+                    else:
+                        completeness[src_id] = "empty"
+                except Exception as exc:
+                    completeness[src_id] = f"error: {exc}"
 
         # ── price ─────────────────────────────────────────────────────────
         if not _REAL_TICKER_RE.match(ticker):
@@ -446,6 +480,64 @@ def _doc_to_dict(d: Any) -> dict[str, Any]:
         "summary": d.summary,
         "raw_payload": d.raw_payload,
     }
+
+
+def is_foreign_ticker(ticker: str) -> bool:
+    return any(ticker.upper().endswith(sfx) for sfx in _FOREIGN_SUFFIXES)
+
+
+def exchange_label_for(ticker: str) -> str:
+    t = ticker.upper()
+    for sfx, label in _FOREIGN_SUFFIXES.items():
+        if t.endswith(sfx):
+            return label
+    return ""
+
+
+def _yfinance_fundamentals(ticker: str) -> dict:
+    """Fetch fundamentals from yfinance and map to Alpha Vantage field names."""
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker).info or {}
+
+        def _pct(v):
+            return round(float(v) * 100, 4) if v is not None else None
+
+        def _str(v):
+            return str(v) if v else None
+
+        result = {}
+        _map = [
+            ("fiftyTwoWeekHigh", "52WeekHigh"),
+            ("fiftyTwoWeekLow", "52WeekLow"),
+            ("marketCap", "MarketCapitalization"),
+            ("trailingPE", "PERatio"),
+            ("priceToSalesTrailing12Months", "PriceToSalesRatioTTM"),
+            ("enterpriseToEbitda", "EVToEBITDA"),
+            ("beta", "Beta"),
+            ("targetMeanPrice", "AnalystTargetPrice"),
+            ("trailingEps", "EPS"),
+        ]
+        for yf_key, av_key in _map:
+            v = info.get(yf_key)
+            if v is not None:
+                result[av_key] = v
+
+        dy = info.get("dividendYield")
+        if dy is not None:
+            result["DividendYield"] = round(float(dy), 6)
+
+        roe = info.get("returnOnEquity")
+        if roe is not None:
+            result["ReturnOnEquityTTM"] = roe
+
+        result["Sector"] = info.get("sector") or ""
+        result["Industry"] = info.get("industry") or ""
+        result["_source"] = "yfinance"
+        return result
+    except Exception as exc:
+        log.warning("yfinance fundamentals failed for %s: %s", ticker, exc)
+        return {}
 
 
 def _sector_keywords(sector_id: str | None) -> str:

@@ -11,13 +11,13 @@ _SCHEMA = {
     "risks": [
         {
             "category": "concentration | regulatory | obsolescence | competitive | balance_sheet | key_person | macro",
-            "risk_statement": "str (specific, named, cited)",
+            "risk_statement": "2 sentences max, 200 chars total — specific, named, cited",
             "severity": "CRITICAL | HIGH | MEDIUM | LOW",
             "evidence_ref": "str e.g. filings_recent[2]",
-            "mitigant": "str or null",
+            "mitigant": "1 sentence max, 150 chars — or null if none identified",
         }
     ],
-    "top_3_risks": ["str"],
+    "top_3_risks": ["1 sentence each, 150 chars max"],
     "overall_risk_rating": "LOW | MEDIUM | HIGH | CRITICAL",
     "confidence": "0.0-1.0",
 }
@@ -36,8 +36,15 @@ Risk categories you MUST evaluate:
 STRICT RULES:
 - Each risk MUST reference specific evidence from context_data. E.g.: "filings_recent[2] mentions top 3 customers = 47% of revenue"
 - Generic risks like "could underperform", "market volatility", "competition could increase" are EXPLICITLY FORBIDDEN.
-- If a category has no specific evidence in context_data, set that category to null or omit it. Do NOT invent risks.
-- Severity: CRITICAL = existential threat, HIGH = material impact expected, MEDIUM = worth monitoring, LOW = real but unlikely to matter near-term.
+- If a category has no specific evidence in context_data, omit it. Do NOT invent risks.
+- Severity: CRITICAL = existential threat, HIGH = material impact expected, MEDIUM = worth monitoring, LOW = real but unlikely near-term.
+- Maximum 8 risks total. Include only the highest-severity risks if more are identified.
+
+OUTPUT CONSTRAINTS (hard limits):
+- risk_statement: 2 sentences max, 200 chars total
+- mitigant: 1 sentence max, 150 chars — or null
+- top_3_risks: 1 sentence each, 150 chars max
+- PROSE STYLE: No paragraphs. One sentence per field. Specific numbers > vague statements.
 
 Cite using: filings_recent[N], news_recent[N], fundamentals.field_name, insider_transactions[N]
 

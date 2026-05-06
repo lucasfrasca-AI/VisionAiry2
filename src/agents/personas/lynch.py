@@ -14,8 +14,8 @@ _SCHEMA = {
     "lynch_category": "slow grower | stalwart | fast grower | cyclical | turnaround | asset play",
     "business_clarity_score": "int 0-10 (10 = crystal clear)",
     "peg_estimate": "float or null",
-    "growth_sustainability": "str",
-    "key_evidence": [{"claim": "str", "source_ref": "e.g. fundamentals.revenue"}],
+    "growth_sustainability": "2 sentences max, 200 chars total",
+    "key_evidence": [{"claim": "1 sentence, 150 chars max", "source_ref": "e.g. fundamentals.revenue"}],
     "time_horizon_months": "int, typically 12-36",
     "data_richness": "rich | moderate | thin | minimal",
 }
@@ -49,6 +49,11 @@ Thin-data guidance (emerging and small-cap companies):
 - Where financials are absent, focus on: what the company actually does (can a teenager understand it?), government/grant validation as proxy for technical credibility, and what specific milestone would make this a compelling fast grower.
 - PASS or INSUFFICIENT_DATA is correct if growth is speculative and unverifiable. HOLD is appropriate for a real but pre-scale business with evidence of product-market fit.
 - Set data_richness to "thin" or "minimal" when fundamentals are sparse.
+
+OUTPUT CONSTRAINTS (hard limits — truncate rather than exceed):
+- growth_sustainability: 2 sentences max, 200 chars total
+- key_evidence: 3 items max; each claim is 1 sentence, 150 chars max
+- PROSE STYLE: No paragraphs. One sentence per field. Drop any point you cannot make in one sentence.
 
 Return ONLY a single JSON object matching the schema. No preamble, no markdown fences, no explanation outside JSON.
 

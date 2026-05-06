@@ -22,21 +22,29 @@ function formatChange(value, pct) {
   return sign + value.toFixed(2) + ' (' + sign + pct.toFixed(2) + '%)';
 }
 
+function _asofNow() {
+  var now = new Date();
+  return 'as of ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+}
+
 window.formatMarketCap = formatMarketCap;
 window.formatVolume = formatVolume;
 window.formatChange = formatChange;
 
+/* ── Single-ticker fetch ─────────────────────────────────────────────── */
 async function loadPrice(ticker, prefix) {
   try {
     const resp = await fetch('/api/price/' + encodeURIComponent(ticker));
     if (!resp.ok) return;
     const data = await resp.json();
     _applySnapshot(ticker, prefix, data);
+    window._lastPriceFetch = Date.now();
   } catch (e) {
     // silent — live price is optional
   }
 }
 
+/* ── Bulk fetch ──────────────────────────────────────────────────────── */
 async function loadPriceBulk(tickers) {
   if (!tickers || !tickers.length) return {};
   try {
@@ -46,12 +54,15 @@ async function loadPriceBulk(tickers) {
       body: JSON.stringify({tickers: tickers})
     });
     if (!resp.ok) return {};
-    return await resp.json();
+    const result = await resp.json();
+    window._lastPriceFetch = Date.now();
+    return result;
   } catch (e) {
     return {};
   }
 }
 
+/* ── Apply snapshot to DOM ───────────────────────────────────────────── */
 function _applySnapshot(ticker, prefix, data) {
   if (!data) return;
   const $ = (id) => document.getElementById(id);
@@ -62,6 +73,7 @@ function _applySnapshot(ticker, prefix, data) {
   const avgVolEl = $(prefix + '-avgvol-' + ticker);
   const mcapEl = $(prefix + '-mcap-' + ticker);
   const markerEl = $(prefix + '-52w-marker-' + ticker);
+  const asofEl = $(prefix + '-asof-' + ticker);
 
   if (priceEl && data.current_price != null) {
     priceEl.textContent = '$' + data.current_price.toFixed(2);
@@ -70,7 +82,7 @@ function _applySnapshot(ticker, prefix, data) {
     const chg = formatChange(data.day_change, data.day_change_pct);
     changeEl.textContent = chg;
     const pct = data.day_change_pct || 0;
-    changeEl.className = changeEl.className.replace(/text-\w+[-\d]*/, '')
+    changeEl.className = changeEl.className.replace(/text-\w+[-\d]*/g, '')
       + (pct >= 0 ? ' text-emerald-600' : ' text-rose-600');
   }
   if (volEl && data.day_volume != null) {
@@ -91,4 +103,19 @@ function _applySnapshot(ticker, prefix, data) {
       markerEl.style.left = pct.toFixed(1) + '%';
     }
   }
+  if (asofEl) {
+    asofEl.textContent = _asofNow();
+  }
 }
+
+/* ── Visibility-driven refresh ───────────────────────────────────────── */
+window._lastPriceFetch = Date.now();
+
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') {
+    var minsSince = (Date.now() - (window._lastPriceFetch || 0)) / 60000;
+    if (minsSince > 2 && typeof window._refreshPrices === 'function') {
+      window._refreshPrices();
+    }
+  }
+});

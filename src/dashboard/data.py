@@ -259,6 +259,8 @@ def get_report(identifier: str, timestamp: str, track: str = "auto") -> dict | N
         "recommendation": rec,
         "conviction": conviction,
         "sector_id": sector,
+        "is_foreign_ticker": bool(data.get("is_foreign_ticker")),
+        "exchange_label": data.get("exchange_label") or "",
     }
 
 

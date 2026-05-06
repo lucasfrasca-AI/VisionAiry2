@@ -201,7 +201,7 @@ window._triageToggle = function(hide) {
 
 {% if established_tickers %}
 // ── Live prices ────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', async function() {
+async function _loadHomePrices() {
   var tickers = {{ established_tickers | tojson }};
   var prices = await loadPriceBulk(tickers);
   for (var ticker in prices) {
@@ -226,7 +226,9 @@ window.addEventListener('DOMContentLoaded', async function() {
   // Re-apply triage after prices load (in case checkbox was restored from localStorage)
   var cb = document.getElementById('triage-toggle');
   if (cb && cb.checked) window._triageToggle(true);
-});
+}
+window._refreshPrices = _loadHomePrices;
+window.addEventListener('DOMContentLoaded', _loadHomePrices);
 {% endif %}
 </script>
 {% endblock %}
