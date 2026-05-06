@@ -204,10 +204,11 @@ def get_report(identifier: str, timestamp: str, track: str = "auto") -> dict | N
 
     md_text = report_md_path.read_text()
 
-    # HTML — use pre-rendered if available, else generate
+    # HTML — use pre-rendered if available, else generate; ensure scroll wrappers present
     html_path = ts_dir / "report.html"
     if html_path.exists():
-        html_content = html_path.read_text()
+        raw_html = html_path.read_text()
+        html_content = raw_html if 'table-scroll-wrap' in raw_html else _wrap_tables(raw_html)
     else:
         html_content = markdown_to_html(md_text)
 

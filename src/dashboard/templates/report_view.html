@@ -140,11 +140,11 @@
   {% endif %}
 
   <!-- Two-column layout: wider body + fixed sidebar -->
-  <div class="lg:grid lg:grid-cols-[1fr_280px] gap-5 flex flex-col">
+  <div class="flex flex-col lg:flex-row gap-5">
 
     <!-- Main content -->
-    <div class="min-w-0">
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+    <div class="flex-1 min-w-0">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
         <div class="prose prose-slate prose-sm max-w-none
                     prose-headings:text-slate-800 prose-headings:font-semibold
                     prose-h2:text-base prose-h2:mt-6 prose-h2:mb-2
@@ -161,7 +161,7 @@
     </div>
 
     <!-- Sidebar (no chart) -->
-    <div>
+    <div class="lg:w-60 shrink-0">
       <div class="space-y-4 lg:sticky lg:top-4">
 
         {% if report.track == "established" %}
